@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTube — YouTube Downloader</title>
+    <meta name="description" content="Paste a YouTube video or playlist link. Pick your tracks, preview them, and download as MP3 or MP4.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float-slow': 'float 6s ease-in-out infinite',
+                        'float-reverse': 'floatRev 8s ease-in-out infinite',
+                        'fade-in-up': 'fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'check-bounce': 'checkBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+                            '50%': { transform: 'translateY(-10px) rotate(3deg)' },
+                        },
+                        floatRev: {
+                            '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+                            '50%': { transform: 'translateY(12px) rotate(-4deg)' },
+                        },
+                        fadeInUp: {
+                            'from': { opacity: '0', transform: 'translateY(15px)' },
+                            'to': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        checkBounce: {
+                            '0%': { transform: 'scale(0)', opacity: '0' },
+                            '50%': { transform: 'scale(1.25)' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f8fafc; /* slate-50 */
+            font-family: 'Inter', sans-serif;
+            position: relative;
+            overflow-x: hidden;
+        }
+        /* Custom light glassmorphism card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(226, 232, 240, 0.8); /* border-slate-200 */
+        }
+        /* Ambient background glows */
+        .mesh-glow-1 {
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+        }
+        .mesh-glow-2 {
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.10) 0%, rgba(255, 255, 255, 0) 70%);
+        }
+        .mesh-glow-3 {
+            background: radial-gradient(circle, rgba(244, 63, 94, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Animated checkmark */
+        .animate-check-bounce {
+            animation: checkBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        @keyframes checkBounce {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.25); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        /* Per-video progress row transitions */
+        .pl-item-row {
+            transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+        }
+        .pl-item-row.pending {
+            opacity: 0.55;
+            background-color: #f8fafc;
+            border-color: #e2e8f0;
+        }
+        .pl-item-row.active {
+            background-color: #eff6ff;
+            border-color: #bfdbfe;
+        }
+        .pl-item-row.done {
+            background-color: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+        .pl-item-row.failed {
+            background-color: #fff1f2;
+            border-color: #fecdd3;
+        }
+        /* Wobble animation for search icon */
+        @keyframes wobble {
+            0%, 100% { transform: rotate(0deg) scale(1); }
+            15% { transform: rotate(-15deg) scale(1.15); }
+            30% { transform: rotate(12deg) scale(1.15); }
+            45% { transform: rotate(-10deg) scale(1.15); }
+            60% { transform: rotate(8deg) scale(1.15); }
+            75% { transform: rotate(-4deg) scale(1.15); }
+        }
+        .animate-wobble {
+            animation: wobble 0.6s ease-in-out infinite;
+            display: inline-block;
+        }
+
+        /* Wavy Water Animation inside Minimized Circle */
+        .wave-container {
+            background-color: #3b82f6; /* blue-500 */
+            transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            border-radius: 50%;
+        }
+        .wave-el {
+            position: absolute;
+            width: 250%;
+            height: 250%;
+            left: -75%;
+            border-radius: 40%;
+            transform-origin: center;
+        }
+        .wave-front {
+            background-color: #3b82f6; /* blue-500 */
+            animation: waveRotateFront 4.5s infinite linear;
+            bottom: 96%; /* Push the center of the spinning square very high relative to container, creating a shallow curved wave at bottom */
+            z-index: 10;
+        }
+        .wave-back {
+            background-color: #60a5fa; /* blue-400 */
+            animation: waveRotateBack 6s infinite linear;
+            bottom: 93%; /* slightly offset to reveal waves */
+            opacity: 0.65;
+            z-index: 5;
+        }
+        @keyframes waveRotateFront {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes waveRotateBack {
+            0% { transform: rotate(180deg); }
+            100% { transform: rotate(540deg); }
+        }
+
+        /* Smooth pop-up to bubble transition styles */
+        #progress-modal {
+            transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.4s;
+            opacity: 0;
+            visibility: hidden;
+        }
+        #progress-modal.show-modal {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        #progress-modal-card {
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease-out;
+            transform: scale(0.9) translateY(20px);
+            opacity: 0;
+            transform-origin: center;
+        }
+        #progress-modal.show-modal #progress-modal-card {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+
+        /* Minimized transition state: scale down and slide towards bottom-right */
+        #progress-modal.minimized-modal {
+            pointer-events: none;
+            background-color: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            transition: background-color 0.4s ease, backdrop-filter 0.4s ease, opacity 0s, visibility 0s;
+            opacity: 1; /* keep the wrapper visible so the child card can animate */
+            visibility: visible;
+        }
+        #progress-modal.minimized-modal #progress-modal-card {
+            /* Mobile: Fly up to top-right position of the floating circle */
+            transform: translate(calc(50vw - 32px), calc(-50vh + 32px)) scale(0.05);
+            opacity: 0;
+            transition: transform 0.6s cubic-bezier(0.5, 0, 0.2, 1), opacity 0.5s ease-out 0.1s;
+        }
+        @media (min-width: 768px) {
+            #progress-modal.minimized-modal #progress-modal-card {
+                /* Desktop: Fly down to the exact bottom-right position of the floating circle */
+                transform: translate(calc(50vw - 44px), calc(50vh - 44px)) scale(0.05);
+            }
+        }
+
+        /* Floating bubble visible state transition */
+        #minimized-progress-circle {
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease-out;
+            transform: scale(0) translate(20px, 20px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        #minimized-progress-circle.visible-bubble {
+            transform: scale(1) translate(0, 0);
+            opacity: 1;
+            pointer-events: auto;
+            /* Delay appearance slightly so the modal card can "reach" it */
+            transition-delay: 0.3s;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col antialiased">
+
+    <!-- Background mesh glows -->
+    <div class="fixed top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full mesh-glow-1 pointer-events-none z-0"></div>
+    <div class="fixed bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full mesh-glow-2 pointer-events-none z-0"></div>
+    <div class="fixed top-[30%] right-[-15%] w-[45vw] h-[45vw] rounded-full mesh-glow-3 pointer-events-none z-0"></div>
+
+    <!-- Header / Navbar -->
+    <header class="w-full py-5 px-6 md:px-12 border-b border-slate-200/80 glass-card sticky top-0 z-40 shadow-sm shadow-slate-100">
+        <div class="max-w-6xl mx-auto flex items-center justify-between relative z-10">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl shadow-md shadow-blue-500/10 text-white">
+                    <i data-lucide="play" class="w-5.5 h-5.5 fill-current"></i>
+                </div>
+                <h1 class="text-2xl font-outfit font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    FlowTube
+                </h1>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-5xl w-full mx-auto px-4 py-12 md:py-16 relative z-10">
+        
+        <!-- Welcome Hero -->
+        <div class="text-center max-w-2xl mx-auto mb-12">
+            <h2 class="text-3xl md:text-5xl font-outfit font-extrabold tracking-tight mb-4 text-slate-900">
+                YouTube <span class="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Downloader</span>
+            </h2>
+            <p class="text-slate-500 text-sm md:text-base leading-relaxed font-medium">
+                Paste a YouTube link, pick your tracks, and download as MP3 or MP4.
+            </p>
+        </div>
+
+        <!-- URL Input Card -->
+        <div class="max-w-3xl mx-auto glass-card rounded-2xl p-6 md:p-8 shadow-xl shadow-slate-100/80 mb-12 border-slate-200/50">
+            <form id="analyze-form" class="space-y-4">
+                <label for="url-input" class="block text-xs font-bold text-slate-400 uppercase tracking-wider">YouTube Link</label>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <div class="relative flex-grow">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i data-lucide="link-2" class="w-5 h-5 text-slate-400 transition-colors duration-200"></i>
+                        </div>
+                        <input 
+                            type="url" 
+                            id="url-input" 
+                            required
+                            placeholder="Paste a YouTube link here…" 
+                            class="block w-full pl-11 pr-12 py-4 rounded-xl bg-slate-50/50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all text-sm md:text-base font-medium shadow-inner"
+                        >
+                        <!-- Clear button -->
+                        <button 
+                            type="button" 
+                            id="clear-input-btn"
+                            class="hidden absolute inset-y-0 right-0 pr-4 flex items-center text-slate-450 hover:text-slate-650 transition-colors focus:outline-none"
+                        >
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <button 
+                        type="submit" 
+                        id="analyze-btn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-xl shadow-md shadow-blue-600/10 active:scale-95 hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                    >
+                        <span>Analyze URL</span>
+                        <i data-lucide="search" class="w-4.5 h-4.5"></i>
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Error Display Alert -->
+            <div id="error-alert" class="hidden mt-4 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 flex items-start gap-3">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+                <div>
+                    <span class="font-bold text-sm">Something went wrong</span>
+                    <p id="error-message" class="text-xs text-rose-500 mt-1 font-medium"></p>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Skeleton Loading State (hidden initially) -->
+        <div id="skeleton-loader" class="hidden max-w-3xl mx-auto space-y-6">
+            <div class="bg-white rounded-2xl p-6 md:p-8 animate-pulse-fast border border-slate-100 shadow-md">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="w-full md:w-56 h-32 bg-slate-100 rounded-xl"></div>
+                    <div class="flex-grow space-y-4">
+                        <div class="h-6 bg-slate-100 rounded-md w-3/4"></div>
+                        <div class="h-4 bg-slate-100 rounded-md w-1/4"></div>
+                        <div class="h-4 bg-slate-100 rounded-md w-1/2"></div>
+                    </div>
+                </div>
+                <div class="mt-8 h-12 bg-slate-100 rounded-xl"></div>
+            </div>
+        </div>
+
+        <!-- Video Result Section (hidden initially) -->
+        <section id="video-result" class="hidden max-w-3xl mx-auto bg-white rounded-2xl p-6 md:p-8 shadow-xl border border-slate-100 fade-in-up">
+            <div class="flex flex-col md:flex-row gap-6 items-start">
+                
+                <!-- Video Player Container (Embedded directly for single videos!) -->
+                <div class="w-full md:w-80 flex-shrink-0 relative rounded-xl overflow-hidden shadow-md border border-slate-200 bg-slate-100 aspect-video">
+                    <iframe 
+                        id="video-player-iframe"
+                        class="w-full h-full" 
+                        src="" 
+                        title="YouTube video player" 
+                        frameborder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                        allowfullscreen
+                    ></iframe>
+                </div>
+
+                <!-- Meta Details -->
+                <div class="flex-grow space-y-2.5">
+                    <h3 id="video-title" class="text-lg md:text-xl font-outfit font-bold text-slate-900 leading-snug">Video Title</h3>
+                    <p id="video-channel" class="text-slate-500 text-sm font-semibold flex items-center gap-1.5">
+                        <span>Channel Name</span>
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5 text-blue-500 fill-blue-50"></i>
+                    </p>
+                    <p class="text-xs text-slate-400 font-medium flex items-center gap-1">
+                        <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                        <span id="video-duration">0:00</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Download Selection Form -->
+            <div class="mt-8 pt-6 border-t border-slate-100 space-y-6">
+                <!-- Choose Format with sliding slider -->
+                <div>
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Select Download Format</h4>
+                    <div class="relative flex p-1 bg-slate-100 rounded-xl border border-slate-200/50 max-w-md">
+                        <!-- Sliding Indicator -->
+                        <div id="format-slider" class="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-in-out"></div>
+                        
+                        <!-- MP3 Button -->
+                        <button 
+                            type="button" 
+                            id="format-mp3" 
+                            class="relative z-10 w-1/2 py-3.5 text-sm font-bold text-blue-600 transition-colors duration-200 flex items-center justify-center gap-2 focus:outline-none"
+                        >
+                            <i data-lucide="music" class="w-4 h-4"></i>
+                            <span>MP3 Audio</span>
+                        </button>
+                        
+                        <!-- MP4 Button -->
+                        <button 
+                            type="button" 
+                            id="format-mp4" 
+                            class="relative z-10 w-1/2 py-3.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors duration-200 flex items-center justify-center gap-2 focus:outline-none"
+                        >
+                            <i data-lucide="film" class="w-4 h-4"></i>
+                            <span>MP4 Video</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Download Trigger -->
+                <button 
+                    id="download-video-btn"
+                    class="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/10 hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="download" class="w-5 h-5"></i>
+                    <span>Download</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Playlist Result Section (hidden initially) -->
+        <section id="playlist-result" class="hidden max-w-4xl mx-auto space-y-6 fade-in-up">
+            
+            <!-- Playlist Header Card -->
+            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-xl border border-slate-100">
+                <div class="flex flex-col md:flex-row gap-6 items-start">
+                    <div class="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex-shrink-0 flex items-center justify-center shadow-md text-white">
+                        <i data-lucide="music-4" class="w-9 h-9"></i>
+                    </div>
+                    <div class="flex-grow space-y-2">
+                        <span class="inline-flex items-center gap-1 py-0.5 px-2.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase border border-indigo-100">
+                            <i data-lucide="list-video" class="w-3 h-3"></i> Playlist
+                        </span>
+                        <h3 id="playlist-title" class="text-xl md:text-2xl font-outfit font-bold text-slate-900">Playlist Title</h3>
+                        <p id="playlist-meta" class="text-slate-500 text-sm font-semibold flex items-center gap-1.5">
+                            <span>Channel Name</span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                            <span id="playlist-count">0 videos</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Config & Bulk Action Panel -->
+                <div class="mt-8 pt-6 border-t border-slate-100 flex flex-col lg:flex-row gap-4 items-center justify-between">
+                    
+                    <!-- Format Switcher Slider -->
+                    <div class="flex items-center gap-3 w-full lg:w-auto">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Format:</span>
+                        <div class="relative flex p-1 bg-slate-100 rounded-xl border border-slate-200/50 w-64">
+                            <!-- Sliding Indicator -->
+                            <div id="playlist-format-slider" class="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-in-out"></div>
+                            
+                            <button id="playlist-format-mp3" class="relative z-10 w-1/2 py-2 text-xs font-bold text-blue-600 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none">
+                                <i data-lucide="music" class="w-3.5 h-3.5"></i> MP3
+                            </button>
+                            <button id="playlist-format-mp4" class="relative z-10 w-1/2 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none">
+                                <i data-lucide="film" class="w-3.5 h-3.5"></i> MP4
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search Filter & Trigger -->
+                    <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-center">
+                        <div class="relative w-full sm:w-60">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+                            </div>
+                            <input 
+                                type="text" 
+                                id="playlist-search" 
+                                placeholder="Search tracks..." 
+                                class="block w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all shadow-inner"
+                            >
+                        </div>
+                        
+                        <button 
+                            id="download-playlist-btn"
+                            class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs px-6 py-3 rounded-xl shadow-md shadow-blue-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <span id="download-playlist-label">Download Selected (0)</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Videos Tracklist Container -->
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+                <!-- Tracklist Toolbar -->
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                    <div class="flex items-center gap-2">
+                        <button id="select-all-btn" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:text-slate-900 transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
+                            <i data-lucide="check-square" class="w-3.5 h-3.5 text-blue-600"></i> Select All
+                        </button>
+                        <button id="deselect-all-btn" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-700 transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
+                            <i data-lucide="square" class="w-3.5 h-3.5 text-slate-400"></i> Clear Selection
+                        </button>
+                    </div>
+                    <span id="playlist-selection-stats" class="text-xs text-slate-500 font-bold">Selected: 0 of 0 videos</span>
+                </div>
+
+                <!-- Video Rows Container with scroll loading animation -->
+                <div class="relative">
+                    <!-- Internal loading state for playlist scrolling -->
+                    <div id="playlist-scroll-loader" class="hidden absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-10 transition-opacity duration-300">
+                        <div class="flex flex-col items-center gap-2">
+                            <i data-lucide="loader-2" class="w-8 h-8 text-blue-600 animate-spin"></i>
+                            <span class="text-xs font-bold text-slate-500">Filtering…</span>
+                        </div>
+                    </div>
+                    
+                    <div id="playlist-items" class="divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
+                        <!-- Rows injected here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full py-6 text-center text-xs text-slate-400 border-t border-slate-200 mt-12 bg-white/40">
+        <p>Powered by <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 font-semibold underline underline-offset-2 decoration-blue-300 hover:decoration-blue-500 transition-colors">yt-dlp</a></p>
+    </footer>
+
+    <!-- Progress & Download Modal (fixed backdrop) -->
+    <div id="progress-modal" class="hidden fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div id="progress-modal-card" class="relative w-full max-w-md bg-white rounded-2xl p-6 md:p-8 shadow-2xl border border-slate-100 flex flex-col space-y-5">
+            
+            <!-- Close button (shown on complete/fail only) -->
+            <button id="close-modal-btn" class="hidden absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-all">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Minimize button (shown during active progress) -->
+            <button id="minimize-modal-btn" class="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-all focus:outline-none">
+                <i data-lucide="minus" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Loading Spinner / Status Icon -->
+            <div class="flex items-center gap-4">
+                <div id="status-icon-container" class="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 flex-shrink-0 animate-pulse">
+                    <div id="status-icon-wrapper">
+                        <i data-lucide="loader" class="w-7 h-7 animate-spin"></i>
+                    </div>
+                </div>
+                <div class="flex-grow min-w-0">
+                    <h3 id="modal-status-text" class="text-base font-outfit font-bold text-slate-900">Starting Download</h3>
+                    <p id="modal-substatus-text" class="text-xs text-slate-500 truncate mt-0.5">Please wait…</p>
+                </div>
+            </div>
+
+            <!-- Single Video Progress Panel -->
+            <div id="progress-stats-panel" class="space-y-3">
+                <!-- Progress Bar -->
+                <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50 p-[2px]">
+                    <div id="modal-progress-bar" class="h-full rounded-full bg-blue-600 transition-all duration-300 w-[0%]"></div>
+                </div>
+                
+                <!-- Percent -->
+                <div class="flex items-center justify-between text-xs font-bold text-slate-500">
+                    <span id="modal-item-counter"></span>
+                    <span id="modal-percent-label" class="text-blue-600">0.0%</span>
+                </div>
+                
+                <!-- Metrics -->
+                <div id="single-metrics" class="grid grid-cols-2 gap-3 pt-1 text-xs">
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Speed</p>
+                        <p id="modal-speed-value" class="text-xs font-extrabold text-slate-700 mt-1">Calculating…</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining</p>
+                        <p id="modal-eta-value" class="text-xs font-extrabold text-slate-700 mt-1">Calculating…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playlist Progress Panel (hidden by default, shown for multi-video downloads) -->
+            <div id="playlist-progress-panel" class="hidden space-y-4">
+                <!-- Overall progress -->
+                <div>
+                    <div class="flex justify-between text-xs font-bold text-slate-500 mb-1.5">
+                        <span id="pl-dl-counter">Preparing downloads…</span>
+                        <span id="pl-dl-overall-pct" class="text-blue-600">0%</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50 p-[1px]">
+                        <div id="pl-dl-overall-bar" class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Speed/ETA for current video -->
+                <div class="grid grid-cols-2 gap-2.5 text-xs">
+                    <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Speed</p>
+                        <p id="pl-dl-speed" class="text-xs font-extrabold text-slate-700 mt-0.5">Calculating…</p>
+                    </div>
+                    <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">ETA</p>
+                        <p id="pl-dl-eta" class="text-xs font-extrabold text-slate-700 mt-0.5">Calculating…</p>
+                    </div>
+                </div>
+                
+                <!-- Per-video list -->
+                <div id="pl-dl-items" class="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                    <!-- Rows dynamically injected -->
+                </div>
+            </div>
+
+            <!-- Error Details Panel (hidden by default) -->
+            <div id="modal-error-panel" class="hidden p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs space-y-1 max-h-36 overflow-y-auto">
+                <p class="font-bold flex items-center gap-1">
+                    <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Download Failed
+                </p>
+                <p id="modal-error-text" class="text-rose-500 font-medium"></p>
+            </div>
+
+            <!-- Actions Panel -->
+            <div id="modal-actions-panel" class="hidden flex flex-col gap-3 pt-2">
+                <!-- Save File Button -->
+                <a 
+                    id="save-download-link" 
+                    href="#" 
+                    class="py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="check" class="w-5 h-5"></i>
+                    <span>Save Downloaded File</span>
+                </a>
+                <!-- Restart/Dismiss Button -->
+                <button 
+                    id="dismiss-modal-btn"
+                    class="py-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold rounded-xl active:scale-[0.98] transition-all text-xs"
+                >
+                    Close & Go Back
+                </button>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Floating Minimized Circle Progress (hidden by default via scale-0 opacity-0 pointer-events-none) -->
+    <div id="minimized-progress-circle" class="fixed top-4 right-4 bottom-auto left-auto w-14 h-14 md:top-auto md:right-6 md:bottom-6 md:w-20 md:h-20 rounded-full bg-white shadow-2xl border border-slate-200 cursor-pointer z-50 flex items-center justify-center hover:scale-105 group overflow-hidden opacity-0 scale-0 pointer-events-none transition-all duration-500 ease-out">
+        <!-- Water Fill Container (Clipped Circle) -->
+        <div class="absolute inset-0 rounded-full overflow-hidden">
+            <!-- Wavy Water Level -->
+            <div id="minimized-water-fill" class="wave-container absolute bottom-0 left-0 right-0" style="height: 0%">
+                <div class="wave-el wave-back"></div>
+                <div class="wave-el wave-front"></div>
+            </div>
+        </div>
+        <!-- Icon & Percentage -->
+        <div class="relative z-10 flex flex-col items-center justify-center pointer-events-none select-none text-center">
+            <span id="minimized-pct-label" class="text-[10px] md:text-xs font-black font-outfit text-blue-900 transition-colors duration-300">0%</span>
+            <i id="minimized-icon" data-lucide="download" class="w-3 md:w-3.5 h-3 md:h-3.5 text-blue-500 mt-0.5 group-hover:scale-115 transition-all animate-bounce"></i>
+        </div>
+    </div>
+
+    <!-- JS Application Script -->
+    <script>
+        // DOM Elements
+        const analyzeForm = document.getElementById('analyze-form');
+        const urlInput = document.getElementById('url-input');
+        const clearInputBtn = document.getElementById('clear-input-btn');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const errorAlert = document.getElementById('error-alert');
+        const errorMessage = document.getElementById('error-message');
+        const skeletonLoader = document.getElementById('skeleton-loader');
+        
+        // Single Video DOM elements
+        const videoResult = document.getElementById('video-result');
+        const videoPlayerIframe = document.getElementById('video-player-iframe');
+        const videoTitle = document.getElementById('video-title');
+        const videoChannel = document.getElementById('video-channel');
+        const videoDuration = document.getElementById('video-duration');
+        const formatMp3 = document.getElementById('format-mp3');
+        const formatMp4 = document.getElementById('format-mp4');
+        const formatSlider = document.getElementById('format-slider');
+        const downloadVideoBtn = document.getElementById('download-video-btn');
+        
+        // Playlist DOM elements
+        const playlistResult = document.getElementById('playlist-result');
+        const playlistTitle = document.getElementById('playlist-title');
+        const playlistMeta = document.getElementById('playlist-meta');
+        const playlistCount = document.getElementById('playlist-count');
+        const playlistSearch = document.getElementById('playlist-search');
+        const selectAllBtn = document.getElementById('select-all-btn');
+        const deselectAllBtn = document.getElementById('deselect-all-btn');
+        const playlistSelectionStats = document.getElementById('playlist-selection-stats');
+        const playlistItems = document.getElementById('playlist-items');
+        const playlistScrollLoader = document.getElementById('playlist-scroll-loader');
+        const downloadPlaylistBtn = document.getElementById('download-playlist-btn');
+        const downloadPlaylistLabel = document.getElementById('download-playlist-label');
+        const playlistFormatMp3 = document.getElementById('playlist-format-mp3');
+        const playlistFormatMp4 = document.getElementById('playlist-format-mp4');
+        const playlistFormatSlider = document.getElementById('playlist-format-slider');
+        
+        // Modal DOM elements
+        const progressModal = document.getElementById('progress-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const dismissModalBtn = document.getElementById('dismiss-modal-btn');
+        const statusIconWrapper = document.getElementById('status-icon-wrapper');
+        const statusIconContainer = document.getElementById('status-icon-container');
+        const modalStatusText = document.getElementById('modal-status-text');
+        const modalSubstatusText = document.getElementById('modal-substatus-text');
+        const progressStatsPanel = document.getElementById('progress-stats-panel');
+        const modalItemCounter = document.getElementById('modal-item-counter');
+        const modalPercentLabel = document.getElementById('modal-percent-label');
+        const modalProgressBar = document.getElementById('modal-progress-bar');
+        const modalSpeedValue = document.getElementById('modal-speed-value');
+        const modalEtaValue = document.getElementById('modal-eta-value');
+        const modalErrorPanel = document.getElementById('modal-error-panel');
+        const modalErrorText = document.getElementById('modal-error-text');
+        const modalActionsPanel = document.getElementById('modal-actions-panel');
+        const saveDownloadLink = document.getElementById('save-download-link');
+        const minimizeModalBtn = document.getElementById('minimize-modal-btn');
+        
+        // Playlist progress modal elements
+        const playlistProgressPanel = document.getElementById('playlist-progress-panel');
+        const plDlCounter = document.getElementById('pl-dl-counter');
+        const plDlOverallPct = document.getElementById('pl-dl-overall-pct');
+        const plDlOverallBar = document.getElementById('pl-dl-overall-bar');
+        const plDlSpeed = document.getElementById('pl-dl-speed');
+        const plDlEta = document.getElementById('pl-dl-eta');
+        const plDlItems = document.getElementById('pl-dl-items');
+
+        // Floating Minimized elements
+        const minimizedProgressCircle = document.getElementById('minimized-progress-circle');
+        const minimizedWaterFill = document.getElementById('minimized-water-fill');
+        const minimizedPctLabel = document.getElementById('minimized-pct-label');
+        const minimizedIcon = document.getElementById('minimized-icon');
+
+        // Application State
+        let currentData = null;
+        let selectedFormat = 'mp3'; // 'mp3' or 'mp4'
+        let playlistSelectedIds = new Set();
+        let playlistAllVideos = [];
+        let sessionSavedVideoIds = new Set(); // Track successfully saved video IDs in this session
+        let activeEventSource = null;
+        let activeIframeRowId = null; // Currently expanded preview in playlist
+        let isPlaylistDownload = false;
+        let plCompletedCount = 0;
+        let plFailedCount = 0;
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Format Duration (Seconds to MM:SS or H:MM:SS)
+        function formatDuration(seconds) {
+            if (!seconds) return '0:00';
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hrs > 0) {
+                return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Safely convert error to displayable string
+        function safeErrorString(error) {
+            if (typeof error === 'string') return error;
+            if (error && error.message) return error.message;
+            try { return JSON.stringify(error); } catch { return "An unknown error occurred."; }
+        }
+
+        // Hide all major screens
+        function hideAllScreens() {
+            videoResult.classList.add('hidden');
+            playlistResult.classList.add('hidden');
+            errorAlert.classList.add('hidden');
+            skeletonLoader.classList.add('hidden');
+            
+            // Clean up player iframe
+            videoPlayerIframe.src = '';
+            activeIframeRowId = null;
+        }
+
+        // URL Input paste action - responsive border color changes
+        urlInput.addEventListener('focus', () => {
+            urlInput.previousElementSibling.querySelector('i').classList.add('text-blue-500');
+        });
+        urlInput.addEventListener('blur', () => {
+            urlInput.previousElementSibling.querySelector('i').classList.remove('text-blue-500');
+        });
+
+        // Show/hide clear button on typing
+        urlInput.addEventListener('input', () => {
+            if (urlInput.value.trim() !== '') {
+                clearInputBtn.classList.remove('hidden');
+            } else {
+                clearInputBtn.classList.add('hidden');
+            }
+        });
+
+        // Clear input logic
+        clearInputBtn.addEventListener('click', () => {
+            urlInput.value = '';
+            clearInputBtn.classList.add('hidden');
+            urlInput.focus();
+        });
+
+        // Form Submission (Analyze URL)
+        analyzeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAllScreens();
+            
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            // Show Loader
+            skeletonLoader.classList.remove('hidden');
+            analyzeBtn.disabled = true;
+            analyzeBtn.querySelector('span').innerText = 'Analyzing…';
+            
+            // Add wobble to search icon
+            const searchIcon = analyzeBtn.querySelector('[data-lucide="search"]');
+            if (searchIcon) searchIcon.classList.add('animate-wobble');
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url }),
+                });
+                
+                const data = await response.json();
+                skeletonLoader.classList.add('hidden');
+                
+                if (!response.ok || !data.success) {
+                     throw new Error(data.detail || data.error || 'Server error occurred.');
+                }
+                
+                currentData = data;
+                
+                if (data.type === 'video') {
+                    showVideoResult(data);
+                } else if (data.type === 'playlist') {
+                    showPlaylistResult(data);
+                }
+            } catch (err) {
+                skeletonLoader.classList.add('hidden');
+                errorMessage.innerText = safeErrorString(err);
+                errorAlert.classList.remove('hidden');
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.querySelector('span').innerText = 'Analyze URL';
+                // Remove wobble from search icon
+                const searchIcon = analyzeBtn.querySelector('[data-lucide="search"]');
+                if (searchIcon) searchIcon.classList.remove('animate-wobble');
+            }
+        });
+
+        // Show Single Video Result
+        function showVideoResult(video) {
+            videoResult.classList.remove('hidden');
+            
+            // Setup details and player directly
+            videoTitle.innerText = video.title;
+            videoChannel.querySelector('span').innerText = video.uploader;
+            videoDuration.innerText = formatDuration(video.duration);
+            
+            // Embed single video directly for playback
+            videoPlayerIframe.src = `https://www.youtube.com/embed/${video.id}`;
+            
+            // Reset sliding format selector
+            selectedFormat = 'mp3';
+            formatSlider.style.transform = 'translateX(0)';
+            formatMp3.classList.add('text-blue-600');
+            formatMp3.classList.remove('text-slate-500');
+            formatMp4.classList.add('text-slate-500');
+            formatMp4.classList.remove('text-blue-600');
+            
+            // Format slider toggle transitions (Smooth sliding tab)
+            formatMp3.onclick = () => {
+                selectedFormat = 'mp3';
+                formatSlider.style.transform = 'translateX(0)';
+                formatMp3.classList.add('text-blue-600');
+                formatMp3.classList.remove('text-slate-500');
+                formatMp4.classList.add('text-slate-500');
+                formatMp4.classList.remove('text-blue-600');
+            };
+            formatMp4.onclick = () => {
+                selectedFormat = 'mp4';
+                formatSlider.style.transform = 'translateX(100%)';
+                formatMp4.classList.add('text-blue-600');
+                formatMp4.classList.remove('text-slate-500');
+                formatMp3.classList.add('text-slate-500');
+                formatMp3.classList.remove('text-blue-600');
+            };
+            
+            // Download button hook
+            downloadVideoBtn.onclick = () => {
+                triggerDownload(video.url, null, selectedFormat, video.id);
+            };
+        }
+
+        // Show Playlist Result
+        function showPlaylistResult(playlist) {
+            playlistResult.classList.remove('hidden');
+            
+            playlistTitle.innerText = playlist.title;
+            playlistMeta.querySelector('span').innerText = playlist.uploader || 'YouTube Playlist';
+            playlistCount.innerText = `${playlist.videos_count} videos`;
+            
+            // Store playlist state
+            playlistAllVideos = playlist.videos;
+            playlistSelectedIds = new Set(
+                playlistAllVideos.filter(v => v.is_available !== false).map(v => v.id)
+            ); // select all available by default
+            selectedFormat = 'mp3'; // default format
+            
+            // Reset sliding playlist format selector
+            playlistFormatSlider.style.transform = 'translateX(0)';
+            playlistFormatMp3.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-blue-600 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+            playlistFormatMp4.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+            
+            playlistFormatMp3.onclick = () => {
+                selectedFormat = 'mp3';
+                playlistFormatSlider.style.transform = 'translateX(0)';
+                playlistFormatMp3.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-blue-600 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+                playlistFormatMp4.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+            };
+            playlistFormatMp4.onclick = () => {
+                selectedFormat = 'mp4';
+                playlistFormatSlider.style.transform = 'translateX(100%)';
+                playlistFormatMp4.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-blue-600 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+                playlistFormatMp3.className = "relative z-10 w-1/2 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors duration-200 flex items-center justify-center gap-1 focus:outline-none";
+            };
+
+            // Render Rows
+            renderPlaylistRows();
+            updatePlaylistSelectionState();
+            
+            // Selection Buttons
+            selectAllBtn.onclick = () => {
+                const visibleCheckboxes = playlistItems.querySelectorAll('input[type="checkbox"]:not(:disabled)');
+                visibleCheckboxes.forEach(cb => {
+                    const row = cb.closest('.playlist-row-container');
+                    if (row && !row.classList.contains('hidden')) {
+                        playlistSelectedIds.add(cb.value);
+                        cb.checked = true;
+                    }
+                });
+                updatePlaylistSelectionState();
+            };
+            
+            deselectAllBtn.onclick = () => {
+                const visibleCheckboxes = playlistItems.querySelectorAll('input[type="checkbox"]');
+                visibleCheckboxes.forEach(cb => {
+                    const row = cb.closest('.playlist-row-container');
+                    if (row && !row.classList.contains('hidden')) {
+                        playlistSelectedIds.delete(cb.value);
+                        cb.checked = false;
+                    }
+                });
+                updatePlaylistSelectionState();
+            };
+            
+            // Search Filter with scrolling loader animation
+            let searchTimeout = null;
+            playlistSearch.value = '';
+            playlistSearch.oninput = (e) => {
+                if (searchTimeout) clearTimeout(searchTimeout);
+                
+                // Show loading state while filtering
+                playlistScrollLoader.classList.remove('hidden');
+                playlistScrollLoader.style.opacity = '1';
+                
+                searchTimeout = setTimeout(() => {
+                    const query = e.target.value.toLowerCase().trim();
+                    const containerRows = playlistItems.querySelectorAll('.playlist-row-container');
+                    
+                    containerRows.forEach(row => {
+                        const titleText = row.querySelector('.video-row-title').innerText.toLowerCase();
+                        if (titleText.includes(query)) {
+                            row.classList.remove('hidden');
+                        } else {
+                            row.classList.add('hidden');
+                        }
+                    });
+                    
+                    // Hide loader with a short delay
+                    playlistScrollLoader.style.opacity = '0';
+                    setTimeout(() => {
+                        playlistScrollLoader.classList.add('hidden');
+                    }, 200);
+                }, 300);
+            };
+
+            // Download selected trigger
+            downloadPlaylistBtn.onclick = () => {
+                if (playlistSelectedIds.size === 0) return;
+                triggerDownload(playlist.url, Array.from(playlistSelectedIds), selectedFormat);
+            };
+        }
+
+        // Render Playlist Video Rows
+        function renderPlaylistRows() {
+            playlistItems.innerHTML = '';
+            playlistAllVideos.forEach((video, idx) => {
+                const isAvailable = video.is_available !== false;
+                const isChecked = isAvailable && playlistSelectedIds.has(video.id);
+                const isRecentlyDownloaded = sessionSavedVideoIds.has(video.id);
+                
+                const container = document.createElement('div');
+                if (isAvailable) {
+                    container.className = `playlist-row-container border-b border-slate-100 hover:bg-slate-50/40 transition-colors ${isRecentlyDownloaded ? 'bg-emerald-50/15' : ''}`;
+                } else {
+                    container.className = "playlist-row-container border-b border-slate-100 bg-slate-50/60 opacity-60";
+                }
+                container.id = `row-container-${video.id}`;
+                
+                container.innerHTML = `
+                    <!-- Main row info -->
+                    <div class="playlist-row flex items-center gap-4 px-6 py-4 ${isAvailable ? 'cursor-pointer' : 'cursor-not-allowed'} select-none">
+                        <!-- Checkbox -->
+                        <div class="flex items-center" onclick="event.stopPropagation()">
+                            <input 
+                                type="checkbox" 
+                                value="${video.id}" 
+                                ${isChecked ? 'checked' : ''} 
+                                ${isAvailable ? '' : 'disabled'}
+                                class="w-4 h-4 rounded text-blue-600 bg-slate-50 border-slate-300 focus:ring-blue-500 focus:ring-offset-white focus:ring-2 accent-blue-600 ${isAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}"
+                            >
+                        </div>
+                        
+                        <!-- Index -->
+                        <span class="text-xs text-slate-400 w-4 text-center font-bold font-outfit">${idx + 1}</span>
+                        
+                        <!-- Small Thumbnail -->
+                        <div class="w-16 h-10 rounded-lg bg-slate-200 border border-slate-200 overflow-hidden flex-shrink-0 relative group">
+                            <img src="${video.thumbnail}" alt="Thumbnail" class="object-cover w-full h-full">
+                            ${isAvailable ? `
+                            <div class="absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                <i data-lucide="play" class="w-4 h-4 text-blue-600 fill-blue-600"></i>
+                            </div>` : ''}
+                        </div>
+                        
+                        <!-- Title & Channel -->
+                        <div class="flex-grow min-w-0">
+                            <h4 class="video-row-title text-sm font-bold text-slate-700 truncate pr-4 leading-tight ${isAvailable ? 'group-hover:text-blue-600' : ''}">${video.title}</h4>
+                            <p class="text-[11px] text-slate-400 font-semibold truncate mt-1 flex items-center gap-1.5">
+                                <span>${video.uploader}</span>
+                                ${isRecentlyDownloaded ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-100 text-emerald-600 border border-emerald-200/80 uppercase tracking-wider">Recently Downloaded</span>` : ''}
+                                ${isAvailable ? '' : `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-rose-100 text-rose-600 border border-rose-200 uppercase">Unavailable</span>`}
+                            </p>
+                        </div>
+                        
+                        <!-- Duration -->
+                        <span class="text-xs font-bold text-slate-400 font-outfit w-12 text-right">${isAvailable ? formatDuration(video.duration) : '--:--'}</span>
+                        
+                        <!-- Direct Single Download -->
+                        <button 
+                            ${isAvailable ? '' : 'disabled'}
+                            class="single-item-dl-btn p-2 rounded-xl text-slate-500 transition-all flex-shrink-0 ${isAvailable ? 'bg-slate-100 hover:bg-emerald-600 hover:text-white border border-slate-200 hover:border-emerald-500 active:scale-95 cursor-pointer' : 'bg-slate-100/50 text-slate-300 border border-slate-200/50 cursor-not-allowed opacity-50'}"
+                            title="${isAvailable ? 'Download this track' : 'Unavailable'}"
+                            onclick="event.stopPropagation()"
+                        >
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Expandable Inline Video Preview Player -->
+                    ${isAvailable ? `
+                    <div class="preview-container hidden px-6 pb-5 transition-all duration-300">
+                        <div class="aspect-video w-full max-w-xl mx-auto rounded-xl overflow-hidden shadow-md bg-slate-100 border border-slate-200">
+                            <div class="player-iframe-wrapper w-full h-full"></div>
+                        </div>
+                    </div>` : ''}
+                `;
+                
+                if (isAvailable) {
+                    // Track checkbox change
+                    const checkbox = container.querySelector('input[type="checkbox"]');
+                    checkbox.onchange = (e) => {
+                        if (e.target.checked) {
+                            playlistSelectedIds.add(video.id);
+                        } else {
+                            playlistSelectedIds.delete(video.id);
+                        }
+                        updatePlaylistSelectionState();
+                    };
+                    
+                    // Single Direct Download Hook
+                    const singleDlBtn = container.querySelector('.single-item-dl-btn');
+                    singleDlBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        triggerDownload(video.url, null, selectedFormat, video.id);
+                    };
+                    
+                    // Expand Row to Play Embedded Video (Optimized Player Preview)
+                    const mainRow = container.querySelector('.playlist-row');
+                    const previewContainer = container.querySelector('.preview-container');
+                    const iframeWrapper = container.querySelector('.player-iframe-wrapper');
+                    
+                    mainRow.onclick = (e) => {
+                        const isExpanded = activeIframeRowId === video.id;
+                        
+                        // Collapse any other open row player preview first to preserve performance
+                        if (activeIframeRowId && activeIframeRowId !== video.id) {
+                            const openRow = document.getElementById(`row-container-${activeIframeRowId}`);
+                            if (openRow) {
+                                openRow.querySelector('.preview-container').classList.add('hidden');
+                                openRow.querySelector('.player-iframe-wrapper').innerHTML = '';
+                                openRow.querySelector('.playlist-row').classList.remove('bg-blue-50/20');
+                            }
+                        }
+                        
+                        if (isExpanded) {
+                            // Close preview
+                            previewContainer.classList.add('hidden');
+                            iframeWrapper.innerHTML = '';
+                            mainRow.classList.remove('bg-blue-50/20');
+                            activeIframeRowId = null;
+                        } else {
+                            // Open preview and dynamically load iframe
+                            previewContainer.classList.remove('hidden');
+                            iframeWrapper.innerHTML = `
+                                <iframe 
+                                    class="w-full h-full" 
+                                    src="https://www.youtube.com/embed/${video.id}?autoplay=1" 
+                                    title="YouTube video player" 
+                                    frameborder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                                    allowfullscreen
+                                ></iframe>`;
+                            mainRow.classList.add('bg-blue-50/20');
+                            activeIframeRowId = video.id;
+                            
+                            // Scroll smoothly to see player if partially cut off
+                            setTimeout(() => {
+                                container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            }, 100);
+                        }
+                    };
+                }
+                
+                playlistItems.appendChild(container);
+            });
+            
+            // Re-render lucide icons inside generated rows
+            lucide.createIcons();
+        }
+
+        // Update Playlist Selection Counts
+        function updatePlaylistSelectionState() {
+            const total = playlistAllVideos.length;
+            const selected = playlistSelectedIds.size;
+            
+            playlistSelectionStats.innerText = `Selected: ${selected} of ${total} videos`;
+            downloadPlaylistLabel.innerText = `Download Selected (${selected})`;
+            
+            if (selected === 0) {
+                downloadPlaylistBtn.disabled = true;
+                downloadPlaylistBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                downloadPlaylistBtn.classList.remove('hover:from-blue-500', 'hover:to-indigo-500', 'active:scale-95');
+            } else {
+                downloadPlaylistBtn.disabled = false;
+                downloadPlaylistBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                downloadPlaylistBtn.classList.add('hover:from-blue-500', 'hover:to-indigo-500', 'active:scale-95');
+            }
+        }
+
+        // ========================================================================
+        // Download Session & SSE Progress
+        // ========================================================================
+
+        // Set the modal icon (reusable helper)
+        function setModalIcon(iconName, colorClass, animate, bounceIn) {
+            let iconHtml = `<i data-lucide="${iconName}" class="w-7 h-7 ${colorClass} ${animate ? 'animate-spin' : ''}"></i>`;
+            if (bounceIn) {
+                iconHtml = `<div class="animate-check-bounce"><i data-lucide="${iconName}" class="w-7 h-7 ${colorClass}"></i></div>`;
+            }
+            statusIconWrapper.innerHTML = iconHtml;
+            lucide.createIcons();
+        }
+
+        // Build the per-video row HTML for the playlist progress modal
+        function buildPlItemRow(index, title, status, percent) {
+            const id = `pl-item-${index}`;
+            let iconHtml = '';
+            let statusClass = 'pending';
+            let pctLabel = '';
+            
+            switch (status) {
+                case 'pending':
+                    iconHtml = '<i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>';
+                    statusClass = 'pending';
+                    pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-slate-300">Waiting</span>';
+                    break;
+                case 'downloading':
+                    iconHtml = '<i data-lucide="loader" class="w-3.5 h-3.5 text-blue-500 animate-spin"></i>';
+                    statusClass = 'active';
+                    pctLabel = `<span class="pl-item-pct text-[10px] font-bold text-blue-500">${percent}%</span>`;
+                    break;
+                case 'processing':
+                    iconHtml = '<i data-lucide="loader" class="w-3.5 h-3.5 text-amber-500 animate-spin"></i>';
+                    statusClass = 'active';
+                    pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-amber-500">Converting</span>';
+                    break;
+                case 'done':
+                    iconHtml = '<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-500"></i>';
+                    statusClass = 'done';
+                    pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-emerald-500">Done</span>';
+                    break;
+                case 'failed':
+                    iconHtml = '<i data-lucide="x-circle" class="w-3.5 h-3.5 text-rose-500"></i>';
+                    statusClass = 'failed';
+                    pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-rose-500">Failed</span>';
+                    break;
+            }
+            
+            const barWidth = status === 'done' ? 100 : (status === 'failed' ? 0 : percent);
+            const barColor = status === 'done' ? 'bg-emerald-400' : (status === 'failed' ? 'bg-rose-300' : 'bg-blue-500');
+            
+            return `
+                <div class="pl-item-row flex items-center gap-2.5 p-2.5 rounded-lg border ${statusClass}" id="${id}">
+                    <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+                        ${iconHtml}
+                    </div>
+                    <div class="flex-grow min-w-0">
+                        <p class="text-[11px] font-bold text-slate-600 truncate">${title}</p>
+                        <div class="mt-1 h-1 bg-slate-200/80 rounded-full overflow-hidden">
+                            <div class="h-full ${barColor} rounded-full transition-all duration-300" style="width: ${barWidth}%"></div>
+                        </div>
+                    </div>
+                    ${pctLabel}
+                </div>
+            `;
+        }
+
+        // Render / update the playlist progress items list
+        function renderPlProgressList(items) {
+            plDlItems.innerHTML = items.map((item, i) => 
+                buildPlItemRow(i + 1, item.title, item.status, item.percent)
+            ).join('');
+            lucide.createIcons();
+            
+            // Auto-scroll to the active item
+            const activeRow = plDlItems.querySelector('.pl-item-row.active');
+            if (activeRow) {
+                activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // Trigger Download Session & Establish SSE Progress Connection
+        async function triggerDownload(url, videoIds, format, singleVideoId = null) {
+            // Close active EventSource if any
+            if (activeEventSource) {
+                activeEventSource.close();
+                activeEventSource = null;
+            }
+
+            isPlaylistDownload = !!(videoIds && videoIds.length > 1);
+            plCompletedCount = 0;
+            plFailedCount = 0;
+
+            // If it's a single video download from the playlist row
+            if (!isPlaylistDownload && singleVideoId) {
+                const foundVideo = playlistAllVideos.find(v => v.id === singleVideoId);
+                const foundTitle = foundVideo ? foundVideo.title : "FlowTube Video";
+                currentData = { id: singleVideoId, title: foundTitle };
+            }
+
+            // Reset minimized progress circle state
+            if (minimizedProgressCircle) {
+                minimizedProgressCircle.classList.remove('visible-bubble');
+                updateMinimizedProgress(0);
+            }
+
+            // Show Modal and reset styles (with smooth transitions)
+            progressModal.classList.remove('hidden');
+            progressModal.classList.remove('minimized-modal');
+            setTimeout(() => {
+                progressModal.classList.add('show-modal');
+            }, 10);
+
+            closeModalBtn.classList.add('hidden');
+            minimizeModalBtn.classList.remove('hidden');
+            modalActionsPanel.classList.add('hidden');
+            modalErrorPanel.classList.add('hidden');
+            
+            setModalIcon('loader', 'text-blue-600', true, false);
+            statusIconContainer.className = "p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 flex-shrink-0 animate-pulse";
+            
+            modalStatusText.innerText = "Starting Download…";
+            modalSubstatusText.innerText = "Setting up download…";
+
+            // Toggle single vs playlist progress panels
+            if (isPlaylistDownload) {
+                progressStatsPanel.classList.add('hidden');
+                playlistProgressPanel.classList.remove('hidden');
+                
+                // Initialize per-video items state
+                const plItems = videoIds.map(id => {
+                    const found = playlistAllVideos.find(v => v.id === id);
+                    return {
+                        id,
+                        title: found ? found.title : `Video ${id.substring(0, 6)}…`,
+                        status: 'pending',
+                        percent: 0
+                    };
+                });
+                
+                plDlCounter.innerText = `Preparing ${videoIds.length} videos…`;
+                plDlOverallPct.innerText = '0%';
+                plDlOverallBar.style.width = '0%';
+                plDlSpeed.innerText = 'Calculating…';
+                plDlEta.innerText = 'Calculating…';
+                
+                renderPlProgressList(plItems);
+                
+                // Store items for SSE updates
+                window._plDownloadItems = plItems;
+                window._plTotalItems = videoIds.length;
+            } else {
+                progressStatsPanel.classList.remove('hidden');
+                playlistProgressPanel.classList.add('hidden');
+                
+                modalItemCounter.innerText = "";
+                modalPercentLabel.innerText = "0.0%";
+                modalProgressBar.style.width = "0%";
+                modalSpeedValue.innerText = "Calculating…";
+                modalEtaValue.innerText = "Calculating…";
+            }
+
+            try {
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: url,
+                        video_ids: videoIds,
+                        format: format
+                    })
+                });
+
+                if (!response.ok) {
+                    let errMsg = 'Failed to start download.';
+                    try {
+                        const errInfo = await response.json();
+                        errMsg = safeErrorString(errInfo.detail || errInfo);
+                    } catch {}
+                    throw new Error(errMsg);
+                }
+
+                const { task_id } = await response.json();
+                
+                // Establish Server-Sent Events stream
+                activeEventSource = new EventSource(`/api/download/progress/${task_id}`);
+                
+                activeEventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (isPlaylistDownload) {
+                        handlePlaylistSSE(data);
+                    } else {
+                        handleSingleSSE(data);
+                    }
+                };
+                
+                activeEventSource.onerror = () => {
+                    if (activeEventSource) {
+                        activeEventSource.close();
+                        activeEventSource = null;
+                    }
+                    showDownloadFailed("Connection to the server was lost. Please try again.");
+                };
+
+            } catch (err) {
+                showDownloadFailed(safeErrorString(err));
+            }
+        }
+
+        // Handle SSE events for single video downloads
+        function handleSingleSSE(data) {
+            if (data.status === 'starting' || data.status === 'starting_item') {
+                modalStatusText.innerText = "Analyzing Media";
+                modalSubstatusText.innerText = data.title || "Fetching format options…";
+            } 
+            else if (data.status === 'progress') {
+                modalStatusText.innerText = "Downloading";
+                modalSubstatusText.innerText = data.title;
+                modalProgressBar.style.width = `${data.percent}%`;
+                modalPercentLabel.innerText = `${data.percent}%`;
+                modalSpeedValue.innerText = data.speed || 'Calculating…';
+                modalEtaValue.innerText = (data.percent >= 100) ? '0s' : (data.eta || 'Calculating…');
+                
+                updateMinimizedProgress(data.percent);
+            }
+            else if (data.status === 'postprocessing') {
+                modalStatusText.innerText = "Converting";
+                modalSubstatusText.innerText = data.title;
+                modalProgressBar.style.width = "100%";
+                modalPercentLabel.innerText = "100.0%";
+                modalEtaValue.innerText = "0s";
+                
+                updateMinimizedProgress(100);
+            }
+            else if (data.status === 'completed') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadComplete(data.download_url);
+            }
+            else if (data.status === 'failed') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadFailed(safeErrorString(data.error));
+            }
+        }
+
+        // Handle SSE events for playlist (multi-video) downloads
+        function handlePlaylistSSE(data) {
+            const items = window._plDownloadItems;
+            const totalItems = window._plTotalItems;
+            const currentIdx = (data.index || 1) - 1; // 0-based
+
+            if (data.status === 'starting_item') {
+                // Update the item title and mark as downloading
+                if (items[currentIdx]) {
+                    items[currentIdx].title = data.title || items[currentIdx].title;
+                    items[currentIdx].status = 'downloading';
+                    items[currentIdx].percent = 0;
+                }
+                
+                modalStatusText.innerText = "Downloading Playlist";
+                modalSubstatusText.innerText = data.title;
+                plDlCounter.innerText = `Downloading ${data.index} of ${totalItems} videos`;
+                
+                renderPlProgressList(items);
+            }
+            else if (data.status === 'progress') {
+                if (items[currentIdx]) {
+                    items[currentIdx].percent = data.percent || 0;
+                    items[currentIdx].status = 'downloading';
+                }
+                
+                // Update the active row's progress bar without full re-render for performance
+                const rowEl = document.getElementById(`pl-item-${data.index}`);
+                if (rowEl) {
+                    const bar = rowEl.querySelector('.h-full');
+                    if (bar) bar.style.width = `${data.percent}%`;
+                    const pctSpan = rowEl.querySelector('.pl-item-pct');
+                    if (pctSpan) {
+                        pctSpan.innerText = `${data.percent}%`;
+                        pctSpan.className = "pl-item-pct text-[10px] font-bold text-blue-500";
+                    }
+                }
+                
+                // Update overall progress
+                const overallPct = Math.round(((plCompletedCount + (data.percent / 100)) / totalItems) * 100);
+                plDlOverallPct.innerText = `${overallPct}%`;
+                plDlOverallBar.style.width = `${overallPct}%`;
+                
+                plDlSpeed.innerText = data.speed || 'Calculating…';
+                plDlEta.innerText = data.eta || 'Calculating…';
+                
+                updateMinimizedProgress(overallPct);
+            }
+            else if (data.status === 'postprocessing') {
+                if (items[currentIdx]) {
+                    items[currentIdx].status = 'processing';
+                    items[currentIdx].percent = 100;
+                }
+                renderPlProgressList(items);
+            }
+            else if (data.status === 'item_complete') {
+                plCompletedCount++;
+                if (items[currentIdx]) {
+                    items[currentIdx].status = 'done';
+                    items[currentIdx].percent = 100;
+                }
+                
+                const overallPct = Math.round(((plCompletedCount) / totalItems) * 100);
+                plDlOverallPct.innerText = `${overallPct}%`;
+                plDlOverallBar.style.width = `${overallPct}%`;
+                
+                renderPlProgressList(items);
+                updateMinimizedProgress(overallPct);
+            }
+            else if (data.status === 'item_failed') {
+                plFailedCount++;
+                if (items[currentIdx]) {
+                    items[currentIdx].status = 'failed';
+                    items[currentIdx].percent = 0;
+                }
+                
+                const overallPct = Math.round(((plCompletedCount) / totalItems) * 100);
+                plDlOverallPct.innerText = `${overallPct}%`;
+                plDlOverallBar.style.width = `${overallPct}%`;
+                
+                renderPlProgressList(items);
+                updateMinimizedProgress(overallPct);
+            }
+            else if (data.status === 'zipping') {
+                modalStatusText.innerText = "Packaging Files";
+                modalSubstatusText.innerText = "Creating ZIP archive…";
+                plDlOverallPct.innerText = "100%";
+                plDlOverallBar.style.width = "100%";
+                updateMinimizedProgress(100);
+            }
+            else if (data.status === 'completed') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadComplete(data.download_url);
+            }
+            else if (data.status === 'failed') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadFailed(safeErrorString(data.error));
+            }
+        }
+
+        function closeSSE() {
+            if (activeEventSource) {
+                activeEventSource.close();
+                activeEventSource = null;
+            }
+        }
+
+        // Show Complete UI inside Modal
+        function showDownloadComplete(downloadUrl) {
+            modalStatusText.innerText = "Download Ready!";
+            modalSubstatusText.innerText = isPlaylistDownload ? "Your files are ready to save." : "Your file is ready to save.";
+            
+            setModalIcon('circle-check-big', 'text-emerald-600', false, true);
+            statusIconContainer.className = "p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 flex-shrink-0";
+            
+            progressStatsPanel.classList.add('hidden');
+            playlistProgressPanel.classList.add('hidden');
+            modalActionsPanel.classList.remove('hidden');
+            closeModalBtn.classList.remove('hidden');
+            minimizeModalBtn.classList.add('hidden');
+            
+            saveDownloadLink.href = downloadUrl;
+            saveDownloadLink.classList.remove('hidden');
+            
+            // Set dynamic button text
+            saveDownloadLink.querySelector('span').innerText = isPlaylistDownload ? "Save Downloaded Files" : "Save Downloaded File";
+            
+            saveDownloadLink.onclick = () => {
+                // Record the completed items to sessionSavedVideoIds to render the "Recently Downloaded" badge
+                if (isPlaylistDownload) {
+                    if (window._plDownloadItems) {
+                        window._plDownloadItems.forEach(item => {
+                            if (item.status === 'done' && item.id) {
+                                sessionSavedVideoIds.add(item.id);
+                            }
+                        });
+                    }
+                } else {
+                    if (currentData && currentData.id) {
+                        sessionSavedVideoIds.add(currentData.id);
+                    }
+                }
+                
+                // Refresh playlist view to show badge(s) immediately
+                renderPlaylistRows();
+                
+                setTimeout(() => {
+                    closeProgressModal();
+                }, 1000);
+            };
+        }
+
+        // Show Failed UI inside Modal
+        function showDownloadFailed(error) {
+            const errorStr = safeErrorString(error);
+            
+            modalStatusText.innerText = "Download Failed";
+            modalSubstatusText.innerText = "Something went wrong.";
+            
+            setModalIcon('alert-triangle', 'text-rose-600', false, false);
+            statusIconContainer.className = "p-3 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 flex-shrink-0";
+            
+            progressStatsPanel.classList.add('hidden');
+            playlistProgressPanel.classList.add('hidden');
+            minimizeModalBtn.classList.add('hidden');
+            
+            modalErrorText.innerText = errorStr;
+            modalErrorPanel.classList.remove('hidden');
+            
+            modalActionsPanel.classList.remove('hidden');
+            saveDownloadLink.classList.add('hidden');
+            closeModalBtn.classList.remove('hidden');
+        }
+
+        // Close Modal with smooth fade transition
+        function closeProgressModal() {
+            progressModal.classList.remove('show-modal');
+            minimizedProgressCircle.classList.remove('visible-bubble');
+            closeSSE();
+            setTimeout(() => {
+                progressModal.classList.add('hidden');
+                progressModal.classList.remove('minimized-modal');
+            }, 400);
+        }
+
+        // Minimize Modal view to bubble
+        function minimizeProgressModal() {
+            progressModal.classList.remove('show-modal');
+            progressModal.classList.add('minimized-modal');
+            minimizedProgressCircle.classList.add('visible-bubble');
+        }
+
+        // Restore Modal view from minimized bubble
+        function restoreProgressModal() {
+            minimizedProgressCircle.classList.remove('visible-bubble');
+            progressModal.classList.remove('minimized-modal');
+            progressModal.classList.add('show-modal');
+        }
+
+        // Update floating minimized circle liquid fill and percentage
+        function updateMinimizedProgress(percent) {
+            minimizedWaterFill.style.height = `${percent}%`;
+            minimizedPctLabel.innerText = `${percent}%`;
+            
+            if (percent >= 45) {
+                // Legible white text on dark blue wave background
+                minimizedPctLabel.className = "text-[10px] md:text-xs font-black font-outfit text-white transition-colors duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]";
+                minimizedIcon.className = "w-3 md:w-3.5 h-3 md:h-3.5 text-white mt-0.5 group-hover:scale-115 transition-all animate-bounce drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]";
+            } else {
+                // Legible dark blue text on light bg / low wave
+                minimizedPctLabel.className = "text-[10px] md:text-xs font-black font-outfit text-blue-900 transition-colors duration-300 drop-shadow-[0_1.5px_2px_rgba(255,255,255,0.9)]";
+                minimizedIcon.className = "w-3 md:w-3.5 h-3 md:h-3.5 text-blue-600 mt-0.5 group-hover:scale-115 transition-all animate-bounce";
+            }
+        }
+
+        minimizeModalBtn.onclick = minimizeProgressModal;
+        minimizedProgressCircle.onclick = restoreProgressModal;
+        closeModalBtn.onclick = closeProgressModal;
+        dismissModalBtn.onclick = closeProgressModal;
+    </script>
+</body>
+</html>

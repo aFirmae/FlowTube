@@ -17,6 +17,9 @@ import yt_dlp
 # Defensive configuration: Ensure /opt/homebrew/bin is in PATH (common for macOS ffmpeg installation)
 os.environ["PATH"] = os.environ.get("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin"
 
+# Global configurations
+DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
+
 # Global dictionary to track active downloads
 # Schema: {
 #   task_id: {
@@ -37,10 +40,9 @@ async def periodic_cleanup():
         now = time.time()
         
         # 1. Clean up the downloads folder
-        downloads_dir = "downloads"
-        if os.path.exists(downloads_dir):
-            for item in os.listdir(downloads_dir):
-                item_path = os.path.join(downloads_dir, item)
+        if os.path.exists(DOWNLOAD_DIR):
+            for item in os.listdir(DOWNLOAD_DIR):
+                item_path = os.path.join(DOWNLOAD_DIR, item)
                 try:
                     mtime = os.path.getmtime(item_path)
                     # Delete files or folders older than 30 minutes (1800 seconds)
@@ -134,7 +136,7 @@ async def get_info(url: str) -> dict:
 
 def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, titles: Optional[List[str]] = None):
     """Blocking function to download videos. Executed inside a thread pool via asyncio.to_thread."""
-    temp_dir = f"downloads/{task_id}"
+    temp_dir = os.path.join(DOWNLOAD_DIR, task_id)
     os.makedirs(temp_dir, exist_ok=True)
     
     total = len(urls)
@@ -291,7 +293,7 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
     # Process output files
     if len(files) > 1:
         send_msg("zipping")
-        zip_path = f"downloads/{task_id}.zip"
+        zip_path = os.path.join(DOWNLOAD_DIR, f"{task_id}.zip")
         try:
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for file_path in files:
@@ -316,7 +318,7 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
         # Exactly one file downloaded
         single_file = files[0]
         ext = os.path.splitext(single_file)[1]
-        dest_path = f"downloads/{task_id}{ext}"
+        dest_path = os.path.join(DOWNLOAD_DIR, f"{task_id}{ext}")
         
         try:
             shutil.move(single_file, dest_path)
@@ -355,6 +357,15 @@ async def analyze_url_endpoint(request: AnalyzeRequest):
         info = await get_info(url)
         if not info:
             raise HTTPException(status_code=400, detail="Failed to fetch video/playlist information.")
+            
+        extractor = info.get('extractor_key') or info.get('extractor') or "YouTube"
+        if isinstance(extractor, str):
+            if 'youtube' in extractor.lower():
+                extractor = 'YouTube'
+            elif 'soundcloud' in extractor.lower():
+                extractor = 'SoundCloud'
+            else:
+                extractor = extractor.title()
             
         is_playlist = info.get('_type') == 'playlist'
         
@@ -409,7 +420,9 @@ async def analyze_url_endpoint(request: AnalyzeRequest):
                 "thumbnail": playlist_thumb,
                 "videos_count": len(videos),
                 "videos": videos,
-                "url": url
+                "url": url,
+                "extractor": extractor,
+                "uploader": info.get('uploader') or info.get('channel') or "Unknown Channel"
             }
         else:
             # Single video
@@ -430,7 +443,8 @@ async def analyze_url_endpoint(request: AnalyzeRequest):
                 "thumbnail": thumb_url,
                 "duration": info.get('duration'),
                 "uploader": info.get('uploader') or info.get('channel') or "Unknown Channel",
-                "url": url
+                "url": url,
+                "extractor": extractor
             }
             
     except Exception as e:

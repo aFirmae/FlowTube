@@ -91,8 +91,33 @@ class AnalyzeRequest(BaseModel):
 
 class DownloadRequest(BaseModel):
     url: str
-    video_ids: Optional[List[str]] = None  # Specific video IDs if downloading selected playlist items
+    video_ids: Optional[List[str]] = None
+    video_titles: Optional[List[str]] = None
     format: str  # "mp3" or "mp4"
+
+class AbortRequest(BaseModel):
+    index: Optional[int] = None
+    keep_files: Optional[bool] = False
+
+class DownloadAborted(Exception): 
+    pass
+
+@app.post("/api/abort/{task_id}")
+async def abort_download(task_id: str, payload: AbortRequest):
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    task_info = tasks[task_id]
+    
+    if payload.index is not None:
+        if "aborted_items" not in task_info:
+            task_info["aborted_items"] = set()
+        task_info["aborted_items"].add(payload.index)
+        return {"detail": f"Aborted item at index {payload.index}"}
+    else:
+        task_info["aborted_all"] = True
+        task_info["keep_files"] = payload.keep_files
+        return {"detail": "Aborted entire task"}
 
 async def get_info(url: str) -> dict:
     """Uses yt-dlp to extract flat metadata of a video or playlist without downloading."""
@@ -100,13 +125,14 @@ async def get_info(url: str) -> dict:
         ydl_opts = {
             'extract_flat': True,
             'skip_download': True,
+            'extractor_args': {'youtube': {'client': ['ios']}},
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
             
     return await asyncio.to_thread(_extract)
 
-def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
+def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, titles: Optional[List[str]] = None):
     """Blocking function to download videos. Executed inside a thread pool via asyncio.to_thread."""
     temp_dir = f"downloads/{task_id}"
     os.makedirs(temp_dir, exist_ok=True)
@@ -127,6 +153,10 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
     # Factory function to properly capture title and index in closure
     def make_progress_hook(vid_title, vid_index):
         def progress_hook(d):
+            task_info = tasks.get(task_id, {})
+            if task_info.get("aborted_all", False) or vid_index in task_info.get("aborted_items", set()):
+                raise DownloadAborted("ABORTED_BY_USER")
+
             if d['status'] == 'downloading':
                 dl_bytes = d.get('downloaded_bytes', 0)
                 tot_bytes = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
@@ -151,23 +181,38 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
     for idx, url in enumerate(urls):
         current_index = idx + 1
         
-        # 1. Fetch the title of the video first (fast step)
-        title_opts = {
-            'skip_download': True,
-        }
-        try:
-            with yt_dlp.YoutubeDL(title_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                title = info.get('title', f"Video {current_index}")
-        except Exception:
-            title = f"Video {current_index}"
+        task_info = tasks.get(task_id, {})
+        if task_info.get("aborted_all", False):
+            break
+            
+        if current_index in task_info.get("aborted_items", set()):
+            send_msg("item_aborted", title=f"Video {current_index}", index=current_index)
+            continue
+        
+        title = titles[idx] if titles and idx < len(titles) else None
+        
+        if not title:
+            # 1. Fetch the title of the video first (fast step)
+            title_opts = {
+                'skip_download': True,
+                'extractor_args': {'youtube': {'client': ['ios']}},
+            }
+            try:
+                with yt_dlp.YoutubeDL(title_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get('title', f"Video {current_index}")
+            except Exception:
+                title = f"Video {current_index}"
             
         send_msg("starting_item", title=title, index=current_index)
         
-        # 2. Setup download options and progress hook
+        # 3. Setup yt_dlp for downloading this item
         ydl_opts = {
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
             'progress_hooks': [make_progress_hook(title, current_index)],
+            'sleep_interval': 2,
+            'max_sleep_interval': 5,
+            'extractor_args': {'youtube': {'client': ['ios']}},
         }
         
         if format_choice == 'mp3':
@@ -192,6 +237,13 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
             # Notify frontend that this specific video completed successfully
             send_msg("item_complete", title=title, index=current_index)
         except Exception as e:
+            if "ABORTED_BY_USER" in str(e):
+                send_msg("item_aborted", title=title, index=current_index)
+                if tasks.get(task_id, {}).get("aborted_all", False):
+                    break
+                else:
+                    continue
+
             error_msg = f"Failed to download '{title}': {str(e)}"
             print(error_msg)
             failed_items.append({"title": title, "index": current_index, "error": error_msg})
@@ -199,7 +251,20 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
             # Continue with remaining videos instead of aborting the entire batch
             continue
             
-    # All download attempts finished. Gather successfully downloaded files.
+    # All download attempts finished or broke. Gather successfully downloaded files.
+    task_info = tasks.get(task_id, {})
+    aborted_all = task_info.get("aborted_all", False)
+    keep_files = task_info.get("keep_files", False)
+
+    if aborted_all and not keep_files:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        send_msg("aborted", error="Download aborted by user.")
+        if task_id in tasks:
+            tasks[task_id]["status"] = "aborted"
+            tasks[task_id]["error"] = "Download aborted by user."
+        return
+
     files = []
     if os.path.exists(temp_dir):
         for root, dirs, filenames in os.walk(temp_dir):
@@ -208,12 +273,18 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
                     files.append(os.path.join(root, filename))
                     
     if not files:
-        error_msg = "No files were downloaded successfully."
-        if failed_items:
-            error_msg = f"All {len(failed_items)} video(s) failed to download."
-        send_msg("failed", error=error_msg)
+        if aborted_all:
+            error_msg = "Download aborted before any files completed."
+            status_event = "aborted"
+        else:
+            error_msg = "No files were downloaded successfully."
+            if failed_items:
+                error_msg = f"All {len(failed_items)} video(s) failed to download."
+            status_event = "failed"
+            
+        send_msg(status_event, error=error_msg)
         if task_id in tasks:
-            tasks[task_id]["status"] = "failed"
+            tasks[task_id]["status"] = status_event
             tasks[task_id]["error"] = error_msg
         return
         
@@ -264,13 +335,15 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
                 tasks[task_id]["error"] = error_msg
             return
 
-async def run_download_task(task_id: str, urls: List[str], format_choice: str):
-    """Bridge function that invokes the blocking downloader inside an async thread pool."""
+async def run_download_task(task_id: str, urls: List[str], format_choice: str, titles: Optional[List[str]] = None):
+    """Runs the blocking download process in a background thread."""
     loop = asyncio.get_running_loop()
     queue = tasks[task_id]["queue"]
     
-    # Run the blocking function in a separate thread
-    await asyncio.to_thread(download_blocking, task_id, urls, format_choice, loop, queue)
+    try:
+        await asyncio.to_thread(download_blocking, task_id, urls, format_choice, loop, queue, titles)
+    except Exception as e:
+        print(f"Task {task_id} failed: {e}")
 
 @app.post("/api/analyze")
 async def analyze_url_endpoint(request: AnalyzeRequest):
@@ -364,19 +437,22 @@ async def analyze_url_endpoint(request: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/download")
-async def start_download_endpoint(request: DownloadRequest, background_tasks: BackgroundTasks):
-    url = request.url.strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="URL cannot be empty")
-        
-    # Determine the URLs to download
+async def start_download(request: DownloadRequest, background_tasks: BackgroundTasks):
+    url = request.url
+    
     urls_to_download = []
+    titles_to_use = None
+    
     if request.video_ids:
-        # Playlist items selected specifically
+        # Construct full youtube URLs for each ID
         urls_to_download = [f"https://www.youtube.com/watch?v={vid}" for vid in request.video_ids]
+        if request.video_titles and len(request.video_titles) == len(urls_to_download):
+            titles_to_use = request.video_titles
     else:
         # Single video url
         urls_to_download = [url]
+        if request.video_titles and len(request.video_titles) == 1:
+            titles_to_use = request.video_titles
         
     if not urls_to_download:
         raise HTTPException(status_code=400, detail="No videos selected for download.")
@@ -391,7 +467,7 @@ async def start_download_endpoint(request: DownloadRequest, background_tasks: Ba
         "created_at": time.time()
     }
     
-    background_tasks.add_task(run_download_task, task_id, urls_to_download, request.format)
+    background_tasks.add_task(run_download_task, task_id, urls_to_download, request.format, titles_to_use)
     
     return {"task_id": task_id}
 

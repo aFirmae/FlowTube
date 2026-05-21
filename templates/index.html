@@ -245,6 +245,43 @@
             transition-delay: 0.3s;
         }
     </style>
+    <style>
+        .custom-checkbox {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 0.375rem;
+            border: 2px solid #cbd5e1;
+            background-color: #ffffff;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+        }
+        .custom-checkbox:hover:not(:disabled) {
+            border-color: #94a3b8;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .custom-checkbox:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+        .custom-checkbox:checked {
+            background-color: #2563eb;
+            border-color: #2563eb;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3E%3C/svg%3E");
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .custom-checkbox:disabled {
+            background-color: #f1f5f9;
+            border-color: #e2e8f0;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+    </style>
 </head>
 <body class="text-slate-800 min-h-screen flex flex-col antialiased">
 
@@ -296,6 +333,16 @@
                             placeholder="Paste a YouTube link here…" 
                             class="block w-full pl-11 pr-12 py-4 rounded-xl bg-slate-50/50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all text-sm md:text-base font-medium shadow-inner"
                         >
+                        <!-- Paste button -->
+                        <button 
+                            type="button" 
+                            id="paste-input-btn"
+                            title="Paste from clipboard"
+                            class="absolute inset-y-0 right-0 pr-3 pl-3 flex items-center justify-center gap-1.5 text-slate-400 hover:text-blue-600 transition-colors focus:outline-none"
+                        >
+                            <span class="text-xs font-semibold tracking-wide uppercase">Paste</span>
+                            <i data-lucide="clipboard-paste" class="w-4 h-4"></i>
+                        </button>
                         <!-- Clear button -->
                         <button 
                             type="button" 
@@ -432,7 +479,7 @@
                         <p id="playlist-meta" class="text-slate-500 text-sm font-semibold flex items-center gap-1.5">
                             <span>Channel Name</span>
                             <span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                            <span id="playlist-count">0 videos</span>
+                            <span id="playlist-count" class="flex items-center gap-1">0 videos</span>
                         </p>
                     </div>
                 </div>
@@ -482,9 +529,9 @@
             </div>
 
             <!-- Videos Tracklist Container -->
-            <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+            <div class="bg-white rounded-2xl shadow-xl border border-slate-100">
                 <!-- Tracklist Toolbar -->
-                <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 rounded-t-2xl flex items-center justify-between flex-wrap gap-3">
                     <div class="flex items-center gap-2">
                         <button id="select-all-btn" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:text-slate-900 transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
                             <i data-lucide="check-square" class="w-3.5 h-3.5 text-blue-600"></i> Select All
@@ -632,6 +679,33 @@
                     Close & Go Back
                 </button>
             </div>
+
+            <!-- Abort Button Container (shown during download) -->
+            <div id="abort-panel" class="hidden mt-2 flex flex-col">
+                <!-- Main Abort Button -->
+                <button 
+                    id="abort-download-btn"
+                    class="w-full py-3 bg-rose-100 hover:bg-rose-200 border border-rose-200 text-rose-700 font-bold rounded-xl active:scale-[0.98] transition-all text-xs flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="x-circle" class="w-4 h-4"></i>
+                    <span id="abort-btn-text">Abort Download</span>
+                </button>
+                
+                <!-- Confirmation Panel Wrapper -->
+                <div id="abort-confirm-wrapper" class="grid transition-all duration-300 ease-in-out" style="grid-template-rows: 0fr;">
+                    <div class="overflow-hidden">
+                        <div class="pt-2">
+                            <div id="abort-confirm-panel" class="w-full bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between px-4 py-3 shadow-sm">
+                                <span class="text-[11px] font-bold text-rose-800 leading-tight">Keep downloaded<br>videos?</span>
+                                <div class="flex gap-2">
+                                    <button id="abort-confirm-yes" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-xs shadow-sm active:scale-95 transition-all">Yes</button>
+                                    <button id="abort-confirm-no" class="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg text-xs shadow-sm active:scale-95 transition-all">No</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
         </div>
     </div>
@@ -709,6 +783,51 @@
         const modalErrorPanel = document.getElementById('modal-error-panel');
         const modalErrorText = document.getElementById('modal-error-text');
         const modalActionsPanel = document.getElementById('modal-actions-panel');
+        
+        const abortPanel = document.getElementById('abort-panel');
+        const abortDownloadBtn = document.getElementById('abort-download-btn');
+        const abortBtnText = document.getElementById('abort-btn-text');
+
+        const abortConfirmPanel = document.getElementById('abort-confirm-panel');
+        const abortConfirmWrapper = document.getElementById('abort-confirm-wrapper');
+        const abortConfirmYes = document.getElementById('abort-confirm-yes');
+        const abortConfirmNo = document.getElementById('abort-confirm-no');
+
+        abortDownloadBtn.addEventListener('click', async () => {
+            if (isPlaylistDownload) {
+                if (abortConfirmWrapper.style.gridTemplateRows === '1fr') {
+                    abortConfirmWrapper.style.gridTemplateRows = '0fr';
+                } else {
+                    abortConfirmWrapper.style.gridTemplateRows = '1fr';
+                }
+            } else {
+                await abortDownload(null, false);
+                abortDownloadBtn.disabled = true;
+                abortBtnText.innerText = "Aborting...";
+            }
+        });
+        
+        const executeAbort = async (keepFiles) => {
+            abortConfirmYes.disabled = true;
+            abortConfirmNo.disabled = true;
+            
+            const spinnerHtml = '<div class="flex items-center gap-1.5"><i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>Aborting...</span></div>';
+            
+            if (keepFiles) {
+                abortConfirmYes.innerHTML = spinnerHtml;
+                abortConfirmNo.style.opacity = '0.5';
+                lucide.createIcons({root: abortConfirmYes});
+            } else {
+                abortConfirmNo.innerHTML = spinnerHtml;
+                abortConfirmYes.style.opacity = '0.5';
+                lucide.createIcons({root: abortConfirmNo});
+            }
+            
+            await abortDownload(null, keepFiles);
+        };
+
+        abortConfirmYes.addEventListener('click', () => executeAbort(true));
+        abortConfirmNo.addEventListener('click', () => executeAbort(false));
         const saveDownloadLink = document.getElementById('save-download-link');
         const minimizeModalBtn = document.getElementById('minimize-modal-btn');
         
@@ -732,10 +851,54 @@
         let selectedFormat = 'mp3'; // 'mp3' or 'mp4'
         let playlistSelectedIds = new Set();
         let playlistAllVideos = [];
+        let playlistLastCheckedIndex = null;
         let sessionSavedVideoIds = new Set(); // Track successfully saved video IDs in this session
         let activeEventSource = null;
         let activeIframeRowId = null; // Currently expanded preview in playlist
         let isPlaylistDownload = false;
+        let activeTaskId = null;
+
+        async function abortDownload(index = null, keepFiles = false) {
+            if (!activeTaskId) return;
+            
+            // Instantly remove from UI and update counter to feel responsive
+            if (index !== null) {
+                const rowEl = document.getElementById(`pl-item-${index}`);
+                if (rowEl) {
+                    rowEl.style.transition = 'all 0.3s ease-out';
+                    rowEl.style.opacity = '0';
+                    rowEl.style.transform = 'translateX(-20px)';
+                    rowEl.style.height = '0px';
+                    rowEl.style.padding = '0px';
+                    rowEl.style.margin = '0px';
+                    rowEl.style.borderWidth = '0px';
+                    rowEl.style.overflow = 'hidden';
+                }
+                
+                if (window._plTotalItems > 0) {
+                    window._plTotalItems--;
+                    const downloadingText = document.getElementById('modal-status-text').innerText;
+                    const plDlCounter = document.getElementById('pl-dl-counter');
+                    if (plDlCounter) {
+                        plDlCounter.innerText = `${downloadingText} ${index} of ${window._plTotalItems} items`;
+                    }
+                    const overallPct = window._plTotalItems > 0 ? Math.round(((plCompletedCount) / window._plTotalItems) * 100) : 100;
+                    document.getElementById('pl-dl-overall-pct').innerText = `${overallPct}%`;
+                    document.getElementById('pl-dl-overall-bar').style.width = `${overallPct}%`;
+                    updateMinimizedProgress(overallPct);
+                }
+            }
+
+            try {
+                await fetch(`/api/abort/${activeTaskId}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ index: index, keep_files: keepFiles })
+                });
+            } catch (e) {
+                console.error("Failed to abort download", e);
+            }
+        }
         let plCompletedCount = 0;
         let plFailedCount = 0;
 
@@ -774,6 +937,8 @@
             activeIframeRowId = null;
         }
 
+        const pasteInputBtn = document.getElementById('paste-input-btn');
+
         // URL Input paste action - responsive border color changes
         urlInput.addEventListener('focus', () => {
             urlInput.previousElementSibling.querySelector('i').classList.add('text-blue-500');
@@ -782,12 +947,14 @@
             urlInput.previousElementSibling.querySelector('i').classList.remove('text-blue-500');
         });
 
-        // Show/hide clear button on typing
+        // Show/hide clear and paste buttons on typing
         urlInput.addEventListener('input', () => {
             if (urlInput.value.trim() !== '') {
                 clearInputBtn.classList.remove('hidden');
+                if (pasteInputBtn) pasteInputBtn.classList.add('hidden');
             } else {
                 clearInputBtn.classList.add('hidden');
+                if (pasteInputBtn) pasteInputBtn.classList.remove('hidden');
             }
         });
 
@@ -795,8 +962,25 @@
         clearInputBtn.addEventListener('click', () => {
             urlInput.value = '';
             clearInputBtn.classList.add('hidden');
+            if (pasteInputBtn) pasteInputBtn.classList.remove('hidden');
             urlInput.focus();
         });
+
+        // Paste input logic
+        if (pasteInputBtn) {
+            pasteInputBtn.addEventListener('click', async () => {
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                        urlInput.value = text;
+                        urlInput.dispatchEvent(new Event('input'));
+                        urlInput.focus();
+                    }
+                } catch (err) {
+                    console.error('Failed to read clipboard contents: ', err);
+                }
+            });
+        }
 
         // Form Submission (Analyze URL)
         analyzeForm.addEventListener('submit', async (e) => {
@@ -901,10 +1085,28 @@
             
             playlistTitle.innerText = playlist.title;
             playlistMeta.querySelector('span').innerText = playlist.uploader || 'YouTube Playlist';
-            playlistCount.innerText = `${playlist.videos_count} videos`;
             
             // Store playlist state
             playlistAllVideos = playlist.videos;
+            const availableCount = playlistAllVideos.filter(v => v.is_available !== false).length;
+            
+            if (availableCount < playlist.videos_count) {
+                playlistCount.innerHTML = `
+                    <span>${availableCount} of ${playlist.videos_count} videos</span>
+                    <div class="relative group flex items-center">
+                        <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600 transition-colors translate-y-[1px]"></i>
+                        <!-- Tooltip -->
+                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all shadow-lg text-center z-50 pointer-events-none leading-tight font-normal">
+                            This list contains videos that are now unavailable.
+                            <!-- Caret -->
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons({ root: playlistCount });
+            } else {
+                playlistCount.innerText = `${playlist.videos_count} videos`;
+            }
             playlistSelectedIds = new Set(
                 playlistAllVideos.filter(v => v.is_available !== false).map(v => v.id)
             ); // select all available by default
@@ -1021,7 +1223,7 @@
                                 value="${video.id}" 
                                 ${isChecked ? 'checked' : ''} 
                                 ${isAvailable ? '' : 'disabled'}
-                                class="w-4 h-4 rounded text-blue-600 bg-slate-50 border-slate-300 focus:ring-blue-500 focus:ring-offset-white focus:ring-2 accent-blue-600 ${isAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}"
+                                class="custom-checkbox"
                             >
                         </div>
                         
@@ -1071,14 +1273,39 @@
                 `;
                 
                 if (isAvailable) {
-                    // Track checkbox change
+                    // Track checkbox change with Shift-Click multi-select
                     const checkbox = container.querySelector('input[type="checkbox"]');
-                    checkbox.onchange = (e) => {
-                        if (e.target.checked) {
-                            playlistSelectedIds.add(video.id);
+                    checkbox.onclick = (e) => {
+                        const checked = e.target.checked;
+                        
+                        if (e.shiftKey && playlistLastCheckedIndex !== null) {
+                            const start = Math.min(playlistLastCheckedIndex, idx);
+                            const end = Math.max(playlistLastCheckedIndex, idx);
+                            
+                            // Check/uncheck all in range
+                            for (let i = start; i <= end; i++) {
+                                const v = playlistAllVideos[i];
+                                if (v.is_available !== false) {
+                                    if (checked) {
+                                        playlistSelectedIds.add(v.id);
+                                    } else {
+                                        playlistSelectedIds.delete(v.id);
+                                    }
+                                    
+                                    // Update DOM checkboxes visually
+                                    const rowCb = document.querySelector(`#row-container-${v.id} input[type="checkbox"]`);
+                                    if (rowCb) rowCb.checked = checked;
+                                }
+                            }
                         } else {
-                            playlistSelectedIds.delete(video.id);
+                            if (checked) {
+                                playlistSelectedIds.add(video.id);
+                            } else {
+                                playlistSelectedIds.delete(video.id);
+                            }
                         }
+                        
+                        playlistLastCheckedIndex = idx;
                         updatePlaylistSelectionState();
                     };
                     
@@ -1146,9 +1373,25 @@
         // Update Playlist Selection Counts
         function updatePlaylistSelectionState() {
             const total = playlistAllVideos.length;
+            const availableCount = playlistAllVideos.filter(v => v.is_available !== false).length;
             const selected = playlistSelectedIds.size;
             
-            playlistSelectionStats.innerText = `Selected: ${selected} of ${total} videos`;
+            if (availableCount < total) {
+                playlistSelectionStats.innerHTML = `
+                    <span>Selected: ${selected} of ${total} videos</span>
+                    <div class="relative group inline-flex items-center ml-1">
+                        <i data-lucide="help-circle" class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600 transition-colors translate-y-[1px]"></i>
+                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all shadow-lg text-center z-50 pointer-events-none leading-tight font-normal">
+                            This list contains videos that are now unavailable.
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons({ root: playlistSelectionStats });
+            } else {
+                playlistSelectionStats.innerText = `Selected: ${selected} of ${total} videos`;
+            }
+            
             downloadPlaylistLabel.innerText = `Download Selected (${selected})`;
             
             if (selected === 0) {
@@ -1205,14 +1448,19 @@
                     pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-emerald-500">Done</span>';
                     break;
                 case 'failed':
-                    iconHtml = '<i data-lucide="x-circle" class="w-3.5 h-3.5 text-rose-500"></i>';
+                    iconHtml = '<i data-lucide="alert-circle" class="w-3.5 h-3.5 text-rose-500"></i>';
                     statusClass = 'failed';
                     pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-rose-500">Failed</span>';
                     break;
+                case 'aborted':
+                    iconHtml = '<i data-lucide="x-circle" class="w-3.5 h-3.5 text-slate-500"></i>';
+                    statusClass = 'failed';
+                    pctLabel = '<span class="pl-item-pct text-[10px] font-bold text-slate-500">Aborted</span>';
+                    break;
             }
             
-            const barWidth = status === 'done' ? 100 : (status === 'failed' ? 0 : percent);
-            const barColor = status === 'done' ? 'bg-emerald-400' : (status === 'failed' ? 'bg-rose-300' : 'bg-blue-500');
+            const barWidth = status === 'done' ? 100 : (status === 'failed' || status === 'aborted' ? 0 : percent);
+            const barColor = status === 'done' ? 'bg-emerald-400' : (status === 'failed' ? 'bg-rose-300' : (status === 'aborted' ? 'bg-slate-300' : 'bg-blue-500'));
             
             return `
                 <div class="pl-item-row flex items-center gap-2.5 p-2.5 rounded-lg border ${statusClass}" id="${id}">
@@ -1226,22 +1474,22 @@
                         </div>
                     </div>
                     ${pctLabel}
+                    ${(status === 'pending' || status === 'downloading') ? 
+                      `<button onclick="abortDownload(${index}, false)" class="ml-1 px-2.5 py-1.5 flex-shrink-0 flex items-center justify-center text-[9px] uppercase tracking-wider font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 hover:text-rose-600 rounded-md transition-colors" title="Abort this video">
+                          Abort
+                       </button>` 
+                      : ''}
                 </div>
             `;
         }
 
         // Render / update the playlist progress items list
         function renderPlProgressList(items) {
-            plDlItems.innerHTML = items.map((item, i) => 
-                buildPlItemRow(i + 1, item.title, item.status, item.percent)
-            ).join('');
+            plDlItems.innerHTML = items.map((item, i) => {
+                if (item.status === 'aborted') return '';
+                return buildPlItemRow(i + 1, item.title, item.status, item.percent);
+            }).join('');
             lucide.createIcons();
-            
-            // Auto-scroll to the active item
-            const activeRow = plDlItems.querySelector('.pl-item-row.active');
-            if (activeRow) {
-                activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
         }
 
         // Trigger Download Session & Establish SSE Progress Connection
@@ -1272,6 +1520,7 @@
             // Show Modal and reset styles (with smooth transitions)
             progressModal.classList.remove('hidden');
             progressModal.classList.remove('minimized-modal');
+            toggleBodyScroll(true);
             setTimeout(() => {
                 progressModal.classList.add('show-modal');
             }, 10);
@@ -1280,6 +1529,17 @@
             minimizeModalBtn.classList.remove('hidden');
             modalActionsPanel.classList.add('hidden');
             modalErrorPanel.classList.add('hidden');
+            
+            abortPanel.classList.remove('hidden');
+            abortDownloadBtn.disabled = false;
+            if (abortConfirmWrapper) {
+                abortConfirmWrapper.style.gridTemplateRows = '0fr';
+                abortConfirmYes.disabled = false;
+                abortConfirmNo.disabled = false;
+                abortConfirmYes.innerText = 'Yes';
+                abortConfirmNo.innerText = 'No';
+            }
+            abortBtnText.innerText = isPlaylistDownload ? "Abort All" : "Abort Download";
             
             setModalIcon('loader', 'text-blue-600', true, false);
             statusIconContainer.className = "p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 flex-shrink-0 animate-pulse";
@@ -1325,17 +1585,29 @@
                 modalEtaValue.innerText = "Calculating…";
             }
 
+            const payload = {
+                url: url,
+                format: format,
+                video_ids: videoIds
+            };
+            
+            if (videoIds) {
+                payload.video_titles = videoIds.map(id => {
+                    const v = playlistAllVideos.find(v => v.id === id);
+                    return v ? v.title : `Video`;
+                });
+            } else if (singleVideoId) {
+                const v = playlistAllVideos.find(v => v.id === singleVideoId);
+                if (v) payload.video_titles = [v.title];
+            } else if (currentData && currentData.title) {
+                payload.video_titles = [currentData.title];
+            }
+
             try {
                 const response = await fetch('/api/download', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        url: url,
-                        video_ids: videoIds,
-                        format: format
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
                 });
 
                 if (!response.ok) {
@@ -1348,6 +1620,7 @@
                 }
 
                 const { task_id } = await response.json();
+                activeTaskId = task_id;
                 
                 // Establish Server-Sent Events stream
                 activeEventSource = new EventSource(`/api/download/progress/${task_id}`);
@@ -1411,6 +1684,11 @@
                 updateMinimizedProgress(100, true);
                 restoreProgressModal();
                 showDownloadComplete(data.download_url);
+            }
+            else if (data.status === 'aborted') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadAborted(data.error || "Aborted by user.");
             }
             else if (data.status === 'failed') {
                 closeSSE();
@@ -1503,6 +1781,43 @@
                 renderPlProgressList(items);
                 updateMinimizedProgress(overallPct);
             }
+            else if (data.status === 'item_aborted') {
+                if (items[currentIdx]) {
+                    items[currentIdx].status = 'aborted';
+                    items[currentIdx].percent = 0;
+                }
+                
+                // Animate removal if row exists
+                const rowEl = document.getElementById(`pl-item-${data.index}`);
+                if (rowEl) {
+                    rowEl.style.transition = 'all 0.3s ease-out';
+                    rowEl.style.opacity = '0';
+                    rowEl.style.transform = 'translateX(-20px)';
+                    rowEl.style.height = '0px';
+                    rowEl.style.padding = '0px';
+                    rowEl.style.margin = '0px';
+                    rowEl.style.borderWidth = '0px';
+                    rowEl.style.overflow = 'hidden';
+                }
+
+                // Decrease total items
+                if (window._plTotalItems > 0) {
+                    window._plTotalItems--;
+                }
+                
+                setTimeout(() => {
+                    const totalItems = window._plTotalItems;
+                    const overallPct = totalItems > 0 ? Math.round(((plCompletedCount) / totalItems) * 100) : 100;
+                    plDlOverallPct.innerText = `${overallPct}%`;
+                    plDlOverallBar.style.width = `${overallPct}%`;
+                    if (data.index) {
+                       plDlCounter.innerText = `${downloadingText} ${data.index} of ${totalItems} items`;
+                    }
+                    
+                    renderPlProgressList(items);
+                    updateMinimizedProgress(overallPct);
+                }, 300);
+            }
             else if (data.status === 'zipping') {
                 modalStatusText.innerText = "Packaging Files";
                 modalSubstatusText.innerText = "Creating ZIP archive…";
@@ -1515,6 +1830,11 @@
                 updateMinimizedProgress(100, true);
                 restoreProgressModal();
                 showDownloadComplete(data.download_url);
+            }
+            else if (data.status === 'aborted') {
+                closeSSE();
+                restoreProgressModal();
+                showDownloadAborted(data.error || "Download aborted.");
             }
             else if (data.status === 'failed') {
                 closeSSE();
@@ -1541,6 +1861,7 @@
             progressStatsPanel.classList.add('hidden');
             playlistProgressPanel.classList.add('hidden');
             modalActionsPanel.classList.remove('hidden');
+            abortPanel.classList.add('hidden');
             closeModalBtn.classList.remove('hidden');
             minimizeModalBtn.classList.add('hidden');
             
@@ -1593,14 +1914,46 @@
             modalErrorPanel.classList.remove('hidden');
             
             modalActionsPanel.classList.remove('hidden');
+            abortPanel.classList.add('hidden');
             saveDownloadLink.classList.add('hidden');
             closeModalBtn.classList.remove('hidden');
+        }
+
+        // Show Aborted UI inside Modal
+        function showDownloadAborted(msg) {
+            modalStatusText.innerText = "Download Aborted";
+            modalSubstatusText.innerText = "Cancelled by user.";
+            
+            setModalIcon('x-octagon', 'text-amber-600', false, false);
+            statusIconContainer.className = "p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 flex-shrink-0";
+            
+            progressStatsPanel.classList.add('hidden');
+            playlistProgressPanel.classList.add('hidden');
+            minimizeModalBtn.classList.add('hidden');
+            
+            modalErrorText.innerText = msg;
+            modalErrorPanel.classList.remove('hidden');
+            
+            modalActionsPanel.classList.remove('hidden');
+            abortPanel.classList.add('hidden');
+            saveDownloadLink.classList.add('hidden');
+            closeModalBtn.classList.remove('hidden');
+        }
+
+        // Utility to lock/unlock scroll
+        function toggleBodyScroll(lock) {
+            if (lock) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
         }
 
         // Close Modal with smooth fade transition
         function closeProgressModal() {
             progressModal.classList.remove('show-modal');
             minimizedProgressCircle.classList.remove('visible-bubble');
+            toggleBodyScroll(false);
             closeSSE();
             setTimeout(() => {
                 progressModal.classList.add('hidden');
@@ -1613,6 +1966,7 @@
             progressModal.classList.remove('show-modal');
             progressModal.classList.add('minimized-modal');
             minimizedProgressCircle.classList.add('visible-bubble');
+            toggleBodyScroll(false);
         }
 
         // Restore Modal view from minimized bubble
@@ -1620,6 +1974,7 @@
             minimizedProgressCircle.classList.remove('visible-bubble');
             progressModal.classList.remove('minimized-modal');
             progressModal.classList.add('show-modal');
+            toggleBodyScroll(true);
         }
 
         // Update floating minimized circle liquid fill and percentage

@@ -613,6 +613,7 @@
                 <a 
                     id="save-download-link" 
                     href="#" 
+                    download
                     class="py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                     <i data-lucide="check" class="w-5 h-5"></i>
@@ -642,8 +643,8 @@
         </div>
         <!-- Icon & Percentage -->
         <div class="relative z-10 flex flex-col items-center justify-center pointer-events-none select-none text-center">
-            <span id="minimized-pct-label" class="text-[10px] md:text-xs font-black font-outfit text-blue-900 transition-colors duration-300">0%</span>
-            <i id="minimized-icon" data-lucide="download" class="w-3 md:w-3.5 h-3 md:h-3.5 text-blue-500 mt-0.5 group-hover:scale-115 transition-all animate-bounce"></i>
+            <span id="minimized-pct-label" class="text-[10px] md:text-xs font-black font-outfit text-slate-900 transition-colors duration-300 drop-shadow-[0_0px_3px_rgba(255,255,255,1)] shadow-white">0%</span>
+            <i id="minimized-icon" data-lucide="download" class="w-3 md:w-3.5 h-3 md:h-3.5 text-slate-900 mt-0.5 transition-all animate-bounce drop-shadow-[0_0px_3px_rgba(255,255,255,1)]"></i>
         </div>
     </div>
 
@@ -1350,9 +1351,9 @@
                     const data = JSON.parse(event.data);
                     
                     if (isPlaylistDownload) {
-                        handlePlaylistSSE(data);
+                        handlePlaylistSSE(data, format);
                     } else {
-                        handleSingleSSE(data);
+                        handleSingleSSE(data, format);
                     }
                 };
                 
@@ -1370,13 +1371,15 @@
         }
 
         // Handle SSE events for single video downloads
-        function handleSingleSSE(data) {
+        function handleSingleSSE(data, format) {
+            const downloadingText = format === 'mp3' ? "Downloading Audio" : "Downloading Video";
+            
             if (data.status === 'starting' || data.status === 'starting_item') {
                 modalStatusText.innerText = "Analyzing Media";
                 modalSubstatusText.innerText = data.title || "Fetching format options…";
             } 
             else if (data.status === 'progress') {
-                modalStatusText.innerText = "Downloading";
+                modalStatusText.innerText = downloadingText;
                 modalSubstatusText.innerText = data.title;
                 modalProgressBar.style.width = `${data.percent}%`;
                 modalPercentLabel.innerText = `${data.percent}%`;
@@ -1407,7 +1410,8 @@
         }
 
         // Handle SSE events for playlist (multi-video) downloads
-        function handlePlaylistSSE(data) {
+        function handlePlaylistSSE(data, format) {
+            const downloadingText = format === 'mp3' ? "Downloading Audio" : "Downloading Video";
             const items = window._plDownloadItems;
             const totalItems = window._plTotalItems;
             const currentIdx = (data.index || 1) - 1; // 0-based
@@ -1420,9 +1424,9 @@
                     items[currentIdx].percent = 0;
                 }
                 
-                modalStatusText.innerText = "Downloading Playlist";
+                modalStatusText.innerText = downloadingText;
                 modalSubstatusText.innerText = data.title;
-                plDlCounter.innerText = `Downloading ${data.index} of ${totalItems} videos`;
+                plDlCounter.innerText = `${downloadingText} ${data.index} of ${totalItems} items`;
                 
                 renderPlProgressList(items);
             }
@@ -1611,17 +1615,14 @@
         function updateMinimizedProgress(percent) {
             minimizedWaterFill.style.height = `${percent}%`;
             minimizedPctLabel.innerText = `${percent}%`;
-            
-            if (percent >= 45) {
-                // Legible white text on dark blue wave background
-                minimizedPctLabel.className = "text-[10px] md:text-xs font-black font-outfit text-white transition-colors duration-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]";
-                minimizedIcon.className = "w-3 md:w-3.5 h-3 md:h-3.5 text-white mt-0.5 group-hover:scale-115 transition-all animate-bounce drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]";
-            } else {
-                // Legible dark blue text on light bg / low wave
-                minimizedPctLabel.className = "text-[10px] md:text-xs font-black font-outfit text-blue-900 transition-colors duration-300 drop-shadow-[0_1.5px_2px_rgba(255,255,255,0.9)]";
-                minimizedIcon.className = "w-3 md:w-3.5 h-3 md:h-3.5 text-blue-600 mt-0.5 group-hover:scale-115 transition-all animate-bounce";
-            }
         }
+
+        // Minimize Modal if clicked outside the popup card
+        progressModal.addEventListener('click', (e) => {
+            if (e.target === progressModal) {
+                minimizeProgressModal();
+            }
+        });
 
         minimizeModalBtn.onclick = minimizeProgressModal;
         minimizedProgressCircle.onclick = restoreProgressModal;

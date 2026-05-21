@@ -180,6 +180,11 @@
             100% { transform: rotate(540deg); }
         }
 
+        /* Completed wave colors */
+        .wave-completed { background-color: #10b981 !important; transition: background-color 0.5s ease-in-out, height 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important; }
+        .wave-completed .wave-front { background-color: #10b981 !important; }
+        .wave-completed .wave-back { background-color: #34d399 !important; }
+
         /* Smooth pop-up to bubble transition styles */
         #progress-modal {
             transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.4s;
@@ -1383,8 +1388,12 @@
                 modalSubstatusText.innerText = data.title;
                 modalProgressBar.style.width = `${data.percent}%`;
                 modalPercentLabel.innerText = `${data.percent}%`;
-                modalSpeedValue.innerText = data.speed || 'Calculating…';
-                modalEtaValue.innerText = (data.percent >= 100) ? '0s' : (data.eta || 'Calculating…');
+                if (data.speed) modalSpeedValue.innerText = data.speed;
+                if (data.percent >= 100) {
+                    modalEtaValue.innerText = '0s';
+                } else if (data.eta) {
+                    modalEtaValue.innerText = data.eta;
+                }
                 
                 updateMinimizedProgress(data.percent);
             }
@@ -1399,6 +1408,7 @@
             }
             else if (data.status === 'completed') {
                 closeSSE();
+                updateMinimizedProgress(100, true);
                 restoreProgressModal();
                 showDownloadComplete(data.download_url);
             }
@@ -1453,8 +1463,8 @@
                 plDlOverallPct.innerText = `${overallPct}%`;
                 plDlOverallBar.style.width = `${overallPct}%`;
                 
-                plDlSpeed.innerText = data.speed || 'Calculating…';
-                plDlEta.innerText = data.eta || 'Calculating…';
+                if (data.speed) plDlSpeed.innerText = data.speed;
+                if (data.eta) plDlEta.innerText = data.eta;
                 
                 updateMinimizedProgress(overallPct);
             }
@@ -1502,6 +1512,7 @@
             }
             else if (data.status === 'completed') {
                 closeSSE();
+                updateMinimizedProgress(100, true);
                 restoreProgressModal();
                 showDownloadComplete(data.download_url);
             }
@@ -1612,9 +1623,16 @@
         }
 
         // Update floating minimized circle liquid fill and percentage
-        function updateMinimizedProgress(percent) {
+        function updateMinimizedProgress(percent, isDone = false) {
             minimizedWaterFill.style.height = `${percent}%`;
-            minimizedPctLabel.innerText = `${percent}%`;
+            
+            if (isDone) {
+                minimizedPctLabel.innerText = "Done";
+                minimizedWaterFill.classList.add('wave-completed');
+            } else {
+                minimizedPctLabel.innerText = `${percent}%`;
+                minimizedWaterFill.classList.remove('wave-completed');
+            }
         }
 
         // Minimize Modal if clicked outside the popup card

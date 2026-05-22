@@ -35,6 +35,38 @@ def get_ydl_opts(base_opts: dict) -> dict:
             opts['extractor_args']['youtube'] = yt_args
     return opts
 
+def fix_cookies_content(content: str) -> str:
+    """Helper to convert space-separated Netscape cookies to tab-separated format if necessary."""
+    lines = []
+    for line in content.splitlines():
+        trimmed = line.strip()
+        if not trimmed or trimmed.startswith("#"):
+            lines.append(line)
+            continue
+            
+        # Try to split by tabs first
+        parts = trimmed.split("\t")
+        if len(parts) >= 7:
+            lines.append(trimmed)
+            continue
+            
+        # If not tab-separated, split by whitespace
+        parts = trimmed.split()
+        if len(parts) >= 7:
+            domain = parts[0]
+            flag = parts[1]
+            path = parts[2]
+            secure = parts[3]
+            expiration = parts[4]
+            name = parts[5]
+            value = " ".join(parts[6:])
+            tab_separated_line = f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}"
+            lines.append(tab_separated_line)
+        else:
+            lines.append(trimmed)
+            
+    return "\n".join(lines)
+
 # Global dictionary to track active downloads
 # Schema: {
 #   task_id: {
@@ -87,9 +119,10 @@ async def lifespan(app: FastAPI):
     youtube_cookies = os.environ.get("YOUTUBE_COOKIES")
     if youtube_cookies:
         try:
+            formatted_cookies = fix_cookies_content(youtube_cookies)
             with open(COOKIES_FILE, "w", encoding="utf-8") as f:
-                f.write(youtube_cookies.strip())
-            print(f"Successfully wrote cookies from YOUTUBE_COOKIES to {COOKIES_FILE}")
+                f.write(formatted_cookies)
+            print(f"Successfully wrote parsed and formatted cookies from YOUTUBE_COOKIES to {COOKIES_FILE}")
         except Exception as e:
             print(f"Error writing cookies from YOUTUBE_COOKIES: {e}")
 
@@ -153,6 +186,7 @@ async def get_info(url: str) -> dict:
         ydl_opts = get_ydl_opts({
             'extract_flat': True,
             'skip_download': True,
+            'ignore_no_formats_error': True,
             'extractor_args': {'youtube': {'client': ['ios']}},
         })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

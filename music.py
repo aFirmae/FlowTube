@@ -136,8 +136,8 @@ async def lifespan(app: FastAPI):
             if (youtube_cookies.startswith('"') and youtube_cookies.endswith('"')) or (youtube_cookies.startswith("'") and youtube_cookies.endswith("'")):
                 youtube_cookies = youtube_cookies[1:-1]
             
-            # Replace literal backslash-n with actual newlines
-            youtube_cookies = youtube_cookies.replace('\\n', '\n').replace('\\r', '')
+            # Replace literal backslash-n with actual newlines and backslash-t with actual tabs
+            youtube_cookies = youtube_cookies.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '')
             
             formatted_cookies = fix_cookies_content(youtube_cookies)
             with open(COOKIES_FILE, "w", encoding="utf-8") as f:

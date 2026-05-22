@@ -4,9 +4,10 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies (ffmpeg is critical for yt-dlp)
+# Install system dependencies (ffmpeg and nodejs are critical for yt-dlp challenge solving)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file into the container

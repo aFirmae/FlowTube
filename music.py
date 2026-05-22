@@ -22,15 +22,20 @@ DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
 COOKIES_FILE = os.environ.get("COOKIES_FILE", "cookies.txt")
 
 def get_ydl_opts(base_opts: dict) -> dict:
-    """Helper to update yt-dlp options with the cookiefile if it exists."""
+    """Helper to update yt-dlp options with the cookiefile if it exists, and configure JS runtime."""
     opts = base_opts.copy()
+    
+    # Configure JavaScript runtime and remote components for challenge solving (anti-bot)
+    opts['js_runtimes'] = {'node': {}}
+    opts['remote_components'] = ['ejs:github']
+    
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
-        # Remove 'ios' client restriction if cookies are used to prevent format availability errors
+        # Remove client restrictions if cookies are used to prevent format availability errors
         if 'extractor_args' in opts and 'youtube' in opts['extractor_args']:
             yt_args = opts['extractor_args']['youtube'].copy()
-            if 'client' in yt_args:
-                yt_args.pop('client', None)
+            yt_args.pop('client', None)
+            yt_args.pop('player_client', None)
             opts['extractor_args'] = opts['extractor_args'].copy()
             opts['extractor_args']['youtube'] = yt_args
     return opts
@@ -207,7 +212,6 @@ async def get_info(url: str) -> dict:
             'extract_flat': True,
             'skip_download': True,
             'ignore_no_formats_error': True,
-            'extractor_args': {'youtube': {'client': ['ios']}},
         })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
@@ -233,11 +237,20 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
         loop.call_soon_threadsafe(queue.put_nowait, msg)
     
     # Factory function to properly capture title and index in closure
-    def make_progress_hook(vid_title, vid_index):
+    def make_progress_hook(title_box, vid_index):
         def progress_hook(d):
             task_info = tasks.get(task_id, {})
             if task_info.get("aborted_all", False) or vid_index in task_info.get("aborted_items", set()):
                 raise DownloadAborted("ABORTED_BY_USER")
+
+            # Try to grab the actual title from the info_dict if it is still a placeholder
+            current_title = title_box[0]
+            if not current_title or current_title == "Video" or current_title.startswith("Video "):
+                info_dict = d.get('info_dict') or {}
+                real_title = info_dict.get('title')
+                if real_title:
+                    title_box[0] = real_title
+                    current_title = real_title
 
             if d['status'] == 'downloading':
                 dl_bytes = d.get('downloaded_bytes', 0)
@@ -250,14 +263,14 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
                 
                 send_msg(
                     "progress", 
-                    title=vid_title, 
+                    title=current_title, 
                     index=vid_index, 
                     percent=round(pct, 1), 
                     speed=speed_str, 
                     eta=eta_str
                 )
             elif d['status'] == 'finished':
-                send_msg("postprocessing", title=vid_title, index=vid_index)
+                send_msg("postprocessing", title=current_title, index=vid_index)
         return progress_hook
         
     for idx, url in enumerate(urls):
@@ -272,29 +285,24 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
             continue
         
         title = titles[idx] if titles and idx < len(titles) else None
-        
-        if not title:
-            # 1. Fetch the title of the video first (fast step)
-            title_opts = get_ydl_opts({
-                'skip_download': True,
-                'extractor_args': {'youtube': {'client': ['ios']}},
-            })
-            try:
-                with yt_dlp.YoutubeDL(title_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    title = info.get('title', f"Video {current_index}")
-            except Exception:
-                title = f"Video {current_index}"
+        if not title or title == "Video":
+            title = f"Video {current_index}"
             
         send_msg("starting_item", title=title, index=current_index)
+        
+        # We wrap the title in a mutable box (list) so that make_progress_hook can update it dynamically
+        title_box = [title]
         
         # 3. Setup yt_dlp for downloading this item
         ydl_opts = get_ydl_opts({
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'progress_hooks': [make_progress_hook(title, current_index)],
-            'sleep_interval': 2,
-            'max_sleep_interval': 5,
-            'extractor_args': {'youtube': {'client': ['ios']}},
+            'progress_hooks': [make_progress_hook(title_box, current_index)],
+            'sleep_interval': 3,
+            'max_sleep_interval': 8,
+            'sleep_interval_requests': 1.5,
+            'ratelimit': '8M',
+            'retries': 10,
+            'fragment_retries': 10,
         })
         
         if format_choice == 'mp3':
@@ -317,19 +325,19 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             # Notify frontend that this specific video completed successfully
-            send_msg("item_complete", title=title, index=current_index)
+            send_msg("item_complete", title=title_box[0], index=current_index)
         except Exception as e:
             if "ABORTED_BY_USER" in str(e):
-                send_msg("item_aborted", title=title, index=current_index)
+                send_msg("item_aborted", title=title_box[0], index=current_index)
                 if tasks.get(task_id, {}).get("aborted_all", False):
                     break
                 else:
                     continue
 
-            error_msg = f"Failed to download '{title}': {str(e)}"
+            error_msg = f"Failed to download '{title_box[0]}': {str(e)}"
             print(error_msg)
-            failed_items.append({"title": title, "index": current_index, "error": error_msg})
-            send_msg("item_failed", title=title, index=current_index, error=error_msg)
+            failed_items.append({"title": title_box[0], "index": current_index, "error": error_msg})
+            send_msg("item_failed", title=title_box[0], index=current_index, error=error_msg)
             # Continue with remaining videos instead of aborting the entire batch
             continue
             

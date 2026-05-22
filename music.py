@@ -19,6 +19,14 @@ os.environ["PATH"] = os.environ.get("PATH", "") + ":/opt/homebrew/bin:/usr/local
 
 # Global configurations
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
+COOKIES_FILE = os.environ.get("COOKIES_FILE", "cookies.txt")
+
+def get_ydl_opts(base_opts: dict) -> dict:
+    """Helper to update yt-dlp options with the cookiefile if it exists."""
+    opts = base_opts.copy()
+    if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
+        opts['cookiefile'] = COOKIES_FILE
+    return opts
 
 # Global dictionary to track active downloads
 # Schema: {
@@ -67,6 +75,17 @@ async def periodic_cleanup():
 async def lifespan(app: FastAPI):
     # Ensure downloads directory exists
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    
+    # Write cookies if available in environment variable
+    youtube_cookies = os.environ.get("YOUTUBE_COOKIES")
+    if youtube_cookies:
+        try:
+            with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+                f.write(youtube_cookies.strip())
+            print(f"Successfully wrote cookies from YOUTUBE_COOKIES to {COOKIES_FILE}")
+        except Exception as e:
+            print(f"Error writing cookies from YOUTUBE_COOKIES: {e}")
+
     # Start periodic cleanup task
     cleanup_task = asyncio.create_task(periodic_cleanup())
     yield
@@ -124,11 +143,11 @@ async def abort_download(task_id: str, payload: AbortRequest):
 async def get_info(url: str) -> dict:
     """Uses yt-dlp to extract flat metadata of a video or playlist without downloading."""
     def _extract():
-        ydl_opts = {
+        ydl_opts = get_ydl_opts({
             'extract_flat': True,
             'skip_download': True,
             'extractor_args': {'youtube': {'client': ['ios']}},
-        }
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
             
@@ -195,10 +214,10 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
         
         if not title:
             # 1. Fetch the title of the video first (fast step)
-            title_opts = {
+            title_opts = get_ydl_opts({
                 'skip_download': True,
                 'extractor_args': {'youtube': {'client': ['ios']}},
-            }
+            })
             try:
                 with yt_dlp.YoutubeDL(title_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -209,13 +228,13 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
         send_msg("starting_item", title=title, index=current_index)
         
         # 3. Setup yt_dlp for downloading this item
-        ydl_opts = {
+        ydl_opts = get_ydl_opts({
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
             'progress_hooks': [make_progress_hook(title, current_index)],
             'sleep_interval': 2,
             'max_sleep_interval': 5,
             'extractor_args': {'youtube': {'client': ['ios']}},
-        }
+        })
         
         if format_choice == 'mp3':
             ydl_opts.update({

@@ -1174,35 +1174,7 @@
             videoResult.classList.remove('hidden');
             
             // Setup details and player directly
-            let providerBadge = '';
-            if (video.extractor) {
-                const extLower = video.extractor.toLowerCase();
-                const isYouTube = extLower === 'youtube';
-                const isSoundCloud = extLower === 'soundcloud';
-                
-                const bgClass = isYouTube ? 'bg-rose-50 text-rose-600 border-rose-100' : (isSoundCloud ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-600 border-slate-100');
-                
-                let iconHtml = '';
-                if (isYouTube) {
-                    iconHtml = `
-                        <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.108C19.53 3.5 12 3.5 12 3.5s-7.53 0-9.388.555a3.003 3.003 0 0 0-2.11 2.108C0 8.017 0 12 0 12s0 3.983.502 5.837a3.003 3.003 0 0 0 2.11 2.108C4.47 20.5 12 20.5 12 20.5s7.53 0 9.388-.555a3.003 3.003 0 0 0 2.11-2.108C24 15.983 24 12 24 12s0-3.983-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                        </svg>
-                    `;
-                } else {
-                    const iconName = isSoundCloud ? 'music' : 'globe';
-                    iconHtml = `<i data-lucide="${iconName}" class="w-3.5 h-3.5"></i>`;
-                }
-                
-                providerBadge = `
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${bgClass} border ml-3 align-middle uppercase tracking-wider">
-                        ${iconHtml}
-                        <span>${video.extractor}</span>
-                    </span>
-                `;
-            }
-            videoTitle.innerHTML = `<span>${video.title}</span>${providerBadge}`;
-            lucide.createIcons({ root: videoTitle });
+            videoTitle.innerHTML = `<span>${video.title}</span>`;
             
             videoChannel.querySelector('span').innerText = video.uploader;
             videoDuration.innerText = formatDuration(video.duration);

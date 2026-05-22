@@ -66,7 +66,7 @@ async def periodic_cleanup():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Ensure downloads directory exists
-    os.makedirs("downloads", exist_ok=True)
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     # Start periodic cleanup task
     cleanup_task = asyncio.create_task(periodic_cleanup())
     yield

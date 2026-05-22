@@ -40,18 +40,28 @@ def fix_cookies_content(content: str) -> str:
     lines = []
     for line in content.splitlines():
         trimmed = line.strip()
-        if not trimmed or trimmed.startswith("#"):
+        if not trimmed:
             lines.append(line)
             continue
             
+        if trimmed.startswith("#") and not trimmed.startswith("#HttpOnly_"):
+            lines.append(line)
+            continue
+            
+        is_http_only = False
+        target_line = trimmed
+        if trimmed.startswith("#HttpOnly_"):
+            is_http_only = True
+            target_line = trimmed[len("#HttpOnly_"):]
+            
         # Try to split by tabs first
-        parts = trimmed.split("\t")
+        parts = target_line.split("\t")
         if len(parts) >= 7:
             lines.append(trimmed)
             continue
             
         # If not tab-separated, split by whitespace
-        parts = trimmed.split()
+        parts = target_line.split()
         if len(parts) >= 7:
             domain = parts[0]
             flag = parts[1]
@@ -61,6 +71,8 @@ def fix_cookies_content(content: str) -> str:
             name = parts[5]
             value = " ".join(parts[6:])
             tab_separated_line = f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}"
+            if is_http_only:
+                tab_separated_line = f"#HttpOnly_{tab_separated_line}"
             lines.append(tab_separated_line)
         else:
             lines.append(trimmed)
@@ -119,6 +131,14 @@ async def lifespan(app: FastAPI):
     youtube_cookies = os.environ.get("YOUTUBE_COOKIES")
     if youtube_cookies:
         try:
+            # Clean up env var string in case it has literal '\n' or quotes from dashboard pasting
+            youtube_cookies = youtube_cookies.strip()
+            if (youtube_cookies.startswith('"') and youtube_cookies.endswith('"')) or (youtube_cookies.startswith("'") and youtube_cookies.endswith("'")):
+                youtube_cookies = youtube_cookies[1:-1]
+            
+            # Replace literal backslash-n with actual newlines
+            youtube_cookies = youtube_cookies.replace('\\n', '\n').replace('\\r', '')
+            
             formatted_cookies = fix_cookies_content(youtube_cookies)
             with open(COOKIES_FILE, "w", encoding="utf-8") as f:
                 f.write(formatted_cookies)

@@ -26,6 +26,13 @@ def get_ydl_opts(base_opts: dict) -> dict:
     opts = base_opts.copy()
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
+        # Remove 'ios' client restriction if cookies are used to prevent format availability errors
+        if 'extractor_args' in opts and 'youtube' in opts['extractor_args']:
+            yt_args = opts['extractor_args']['youtube'].copy()
+            if 'client' in yt_args:
+                yt_args.pop('client', None)
+            opts['extractor_args'] = opts['extractor_args'].copy()
+            opts['extractor_args']['youtube'] = yt_args
     return opts
 
 # Global dictionary to track active downloads

@@ -5,6 +5,7 @@ import time
 import asyncio
 import zipfile
 import shutil
+import http.cookiejar
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 
@@ -19,7 +20,7 @@ os.environ["PATH"] = os.environ.get("PATH", "") + ":/opt/homebrew/bin:/usr/local
 
 # Global configurations
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
-COOKIES_FILE = os.environ.get("COOKIES_FILE", "cookies.txt")
+COOKIES_FILE = os.path.abspath(os.environ.get("COOKIES_FILE", "cookies.txt"))
 
 def get_ydl_opts(base_opts: dict) -> dict:
     """Helper to update yt-dlp options with the cookiefile if it exists, and configure JS runtime."""
@@ -28,6 +29,7 @@ def get_ydl_opts(base_opts: dict) -> dict:
     # Configure JavaScript runtime and remote components for challenge solving (anti-bot)
     opts['js_runtimes'] = {'node': {}}
     opts['remote_components'] = ['ejs:github']
+    opts['force_ipv4'] = True
     
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
@@ -41,16 +43,20 @@ def get_ydl_opts(base_opts: dict) -> dict:
     return opts
 
 def fix_cookies_content(content: str) -> str:
-    """Helper to convert space-separated Netscape cookies to tab-separated format if necessary."""
+    """Helper to convert space-separated Netscape cookies to tab-separated format and guarantee the Netscape magic header is the first line."""
     lines = []
     for line in content.splitlines():
         trimmed = line.strip()
         if not trimmed:
-            lines.append(line)
+            continue
+            
+        # Ignore any existing magic header or typical comments that might get in the way of the magic header
+        if "HTTP Cookie File" in trimmed and trimmed.startswith("#"):
             continue
             
         if trimmed.startswith("#") and not trimmed.startswith("#HttpOnly_"):
-            lines.append(line)
+            # Keep other comments, but they will be placed after the magic header
+            lines.append(trimmed)
             continue
             
         is_http_only = False
@@ -82,7 +88,8 @@ def fix_cookies_content(content: str) -> str:
         else:
             lines.append(trimmed)
             
-    return "\n".join(lines)
+    # Always prepend the Netscape HTTP Cookie File header as the absolute first line
+    return "# Netscape HTTP Cookie File\n" + "\n".join(lines)
 
 # Global dictionary to track active downloads
 # Schema: {
@@ -142,7 +149,7 @@ async def lifespan(app: FastAPI):
                 youtube_cookies = youtube_cookies[1:-1]
             
             # Replace literal backslash-n with actual newlines and backslash-t with actual tabs
-            youtube_cookies = youtube_cookies.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '')
+            youtube_cookies = youtube_cookies.replace('\r', '').replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '')
             
             formatted_cookies = fix_cookies_content(youtube_cookies)
             with open(COOKIES_FILE, "w", encoding="utf-8") as f:
@@ -187,6 +194,63 @@ class AbortRequest(BaseModel):
 
 class DownloadAborted(Exception): 
     pass
+
+@app.get("/api/debug/cookies")
+async def debug_cookies():
+    """Diagnostic endpoint to inspect cookie loading without exposing sensitive data."""
+    exists = os.path.exists(COOKIES_FILE)
+    size = os.path.getsize(COOKIES_FILE) if exists else 0
+    
+    parsed_cookies = []
+    error = None
+    
+    if exists:
+        try:
+            cj = http.cookiejar.MozillaCookieJar(COOKIES_FILE)
+            cj.load(ignore_discard=True, ignore_expires=True)
+            for cookie in cj:
+                val = cookie.value or ""
+                masked_val = val if len(val) <= 6 else f"{val[:3]}...{val[-3:]}"
+                parsed_cookies.append({
+                    "domain": cookie.domain,
+                    "name": cookie.name,
+                    "value_masked": masked_val,
+                    "expires": cookie.expires,
+                    "path": cookie.path,
+                    "secure": cookie.secure
+                })
+        except Exception as e:
+            error = str(e)
+            
+    raw_lines_summary = []
+    if exists:
+        try:
+            with open(COOKIES_FILE, "r", encoding="utf-8") as f:
+                for idx, line in enumerate(f):
+                    trimmed = line.strip()
+                    if not trimmed:
+                        continue
+                    if trimmed.startswith("#"):
+                        raw_lines_summary.append(f"Line {idx+1}: [Comment] {trimmed}")
+                    else:
+                        parts = trimmed.split("\t")
+                        if len(parts) >= 6:
+                            domain, flag, path, secure, expiration, name = parts[:6]
+                            raw_lines_summary.append(f"Line {idx+1}: [Cookie] domain={domain}, name={name}")
+                        else:
+                            raw_lines_summary.append(f"Line {idx+1}: [Malformed/Other] {trimmed[:30]}...")
+        except Exception as e:
+            raw_lines_summary.append(f"Error reading file: {e}")
+            
+    return {
+        "cookies_file_path": COOKIES_FILE,
+        "exists": exists,
+        "size_bytes": size,
+        "parse_error": error,
+        "parsed_count": len(parsed_cookies),
+        "cookies": parsed_cookies,
+        "raw_lines_summary": raw_lines_summary
+    }
 
 @app.post("/api/abort/{task_id}")
 async def abort_download(task_id: str, payload: AbortRequest):

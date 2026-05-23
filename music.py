@@ -31,6 +31,13 @@ def get_ydl_opts(base_opts: dict) -> dict:
     opts['remote_components'] = ['ejs:github']
     opts['force_ipv4'] = True
     
+    # Enable browser TLS fingerprint impersonation to bypass cloud/datacenter IP blocking
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        opts['impersonate'] = ImpersonateTarget(client='chrome')
+    except ImportError:
+        pass
+    
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
         # Remove client restrictions if cookies are used to prevent format availability errors

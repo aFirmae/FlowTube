@@ -3,3 +3,4 @@ uvicorn[standard]
 yt-dlp
 jinja2
 pydantic
+curl-cffi>=0.10.0,<0.15.0

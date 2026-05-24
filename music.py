@@ -23,7 +23,7 @@ DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "downloads")
 COOKIES_FILE = os.path.abspath(os.environ.get("COOKIES_FILE", "cookies.txt"))
 
 def get_ydl_opts(base_opts: dict) -> dict:
-    """Helper to update yt-dlp options with the cookiefile if it exists, and configure JS runtime."""
+    """Helper to update yt-dlp options with the cookiefile if it exists, and configure anti-bot measures."""
     opts = base_opts.copy()
     
     # Configure JavaScript runtime and remote components for challenge solving (anti-bot)
@@ -38,14 +38,22 @@ def get_ydl_opts(base_opts: dict) -> dict:
     except (ImportError, Exception) as e:
         print(f"WARNING: Could not enable impersonation: {e}")
     
+    # Configure PO Token provider (bgutil) for YouTube bot bypass on datacenter IPs
+    # The bgutil-pot-provider server runs on localhost:4416 (started in entrypoint.sh)
+    pot_provider_url = os.environ.get("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+    if 'extractor_args' not in opts:
+        opts['extractor_args'] = {}
+    opts['extractor_args']['youtubepot-bgutilhttp'] = {
+        'base_url': pot_provider_url,
+    }
+    
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
         # Remove client restrictions if cookies are used to prevent format availability errors
-        if 'extractor_args' in opts and 'youtube' in opts['extractor_args']:
+        if 'youtube' in opts['extractor_args']:
             yt_args = opts['extractor_args']['youtube'].copy()
             yt_args.pop('client', None)
             yt_args.pop('player_client', None)
-            opts['extractor_args'] = opts['extractor_args'].copy()
             opts['extractor_args']['youtube'] = yt_args
     return opts
 
@@ -323,13 +331,36 @@ async def debug_environment():
     try:
         test = get_ydl_opts({})
         imp = test.get('impersonate')
+        ext_args = test.get('extractor_args', {})
         result["ydl_opts_test"] = {
             "impersonate": str(imp) if imp else None,
             "force_ipv4": test.get('force_ipv4'),
             "cookiefile": test.get('cookiefile'),
+            "extractor_args": {k: v for k, v in ext_args.items()},
         }
     except Exception as e:
         result["ydl_opts_test"] = {"error": str(e)}
+    
+    # Check bgutil-ytdlp-pot-provider plugin
+    try:
+        import bgutil_ytdlp_pot_provider
+        result["bgutil_plugin_installed"] = True
+        result["bgutil_plugin_version"] = getattr(bgutil_ytdlp_pot_provider, '__version__', 'unknown')
+    except ImportError as e:
+        result["bgutil_plugin_installed"] = False
+        result["bgutil_plugin_error"] = str(e)
+    
+    # Check if the PO Token provider server is reachable
+    pot_url = os.environ.get("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+    try:
+        import urllib.request
+        req = urllib.request.Request(pot_url, method='GET')
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            result["pot_provider_reachable"] = True
+            result["pot_provider_status"] = resp.status
+    except Exception as e:
+        result["pot_provider_reachable"] = False
+        result["pot_provider_error"] = str(e)
     
     return result
 

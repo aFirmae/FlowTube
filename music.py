@@ -351,17 +351,57 @@ async def debug_environment():
     
     # Check if the PO Token provider server is reachable
     pot_url = os.environ.get("POT_PROVIDER_URL", "http://127.0.0.1:4416")
+    ping_url = pot_url.rstrip('/') + '/ping'
     try:
         import urllib.request
-        req = urllib.request.Request(pot_url, method='GET')
+        req = urllib.request.Request(ping_url, method='GET')
         with urllib.request.urlopen(req, timeout=3) as resp:
             result["pot_provider_reachable"] = True
             result["pot_provider_status"] = resp.status
+            result["pot_provider_response"] = resp.read().decode('utf-8', errors='ignore')
     except Exception as e:
         result["pot_provider_reachable"] = False
         result["pot_provider_error"] = str(e)
     
     return result
+
+@app.get("/api/debug/test-download")
+async def debug_test_download(url: str = "https://www.youtube.com/watch?v=fgRVb4-QQls"):
+    """Runs a dry-run verbose metadata extraction to debug the PO Token provider integration."""
+    class YDLVerboseLogger:
+        def __init__(self):
+            self.logs = []
+        def debug(self, msg):
+            self.logs.append(f"[debug] {msg}")
+        def info(self, msg):
+            self.logs.append(f"[info] {msg}")
+        def warning(self, msg):
+            self.logs.append(f"[warning] {msg}")
+        def error(self, msg):
+            self.logs.append(f"[error] {msg}")
+            
+    logger = YDLVerboseLogger()
+    
+    def _run():
+        ydl_opts = get_ydl_opts({
+            'logger': logger,
+            'verbose': True,
+            'skip_download': True,
+            'extract_flat': True,
+        })
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(url, download=False)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+            
+    result = await asyncio.to_thread(_run)
+    return {
+        "success": result["success"],
+        "error": result.get("error"),
+        "logs": logger.logs
+    }
 
 @app.post("/api/abort/{task_id}")
 async def abort_download(task_id: str, payload: AbortRequest):

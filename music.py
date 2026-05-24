@@ -40,11 +40,12 @@ def get_ydl_opts(base_opts: dict) -> dict:
     
     # Configure PO Token provider (bgutil) for YouTube bot bypass on datacenter IPs
     # The bgutil-pot-provider server runs on localhost:4416 (started in entrypoint.sh)
+    # Note: base_url must be passed as a list of strings due to a bug/design in yt-dlp's configuration_arg helper
     pot_provider_url = os.environ.get("POT_PROVIDER_URL", "http://127.0.0.1:4416")
     if 'extractor_args' not in opts:
         opts['extractor_args'] = {}
     opts['extractor_args']['youtubepot-bgutilhttp'] = {
-        'base_url': pot_provider_url,
+        'base_url': [pot_provider_url],
     }
     
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:

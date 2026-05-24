@@ -371,7 +371,7 @@ def download_blocking(task_id: str, urls: List[str], format_choice: str, loop: a
             'sleep_interval': 3,
             'max_sleep_interval': 8,
             'sleep_interval_requests': 1.5,
-            'ratelimit': '8M',
+            'ratelimit': 8 * 1024 * 1024,
             'retries': 10,
             'fragment_retries': 10,
         })

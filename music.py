@@ -343,9 +343,8 @@ async def debug_environment():
     
     # Check bgutil-ytdlp-pot-provider plugin
     try:
-        import bgutil_ytdlp_pot_provider
+        import yt_dlp_plugins.extractor.getpot_bgutil_http
         result["bgutil_plugin_installed"] = True
-        result["bgutil_plugin_version"] = getattr(bgutil_ytdlp_pot_provider, '__version__', 'unknown')
     except ImportError as e:
         result["bgutil_plugin_installed"] = False
         result["bgutil_plugin_error"] = str(e)

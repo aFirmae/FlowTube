@@ -35,8 +35,8 @@ def get_ydl_opts(base_opts: dict) -> dict:
     try:
         from yt_dlp.networking.impersonate import ImpersonateTarget
         opts['impersonate'] = ImpersonateTarget(client='chrome')
-    except ImportError:
-        pass
+    except (ImportError, Exception) as e:
+        print(f"WARNING: Could not enable impersonation: {e}")
     
     if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts['cookiefile'] = COOKIES_FILE
@@ -258,6 +258,80 @@ async def debug_cookies():
         "cookies": parsed_cookies,
         "raw_lines_summary": raw_lines_summary
     }
+
+@app.get("/api/debug/environment")
+async def debug_environment():
+    """Diagnostic endpoint to check curl-cffi and impersonation availability."""
+    result = {
+        "python_version": None,
+        "yt_dlp_version": None,
+        "curl_cffi_installed": False,
+        "curl_cffi_version": None,
+        "curl_cffi_import_error": None,
+        "impersonate_available": False,
+        "impersonate_import_error": None,
+        "impersonate_targets": [],
+        "ydl_opts_test": {},
+    }
+    
+    import sys
+    result["python_version"] = sys.version
+    
+    try:
+        result["yt_dlp_version"] = yt_dlp.version.__version__
+    except Exception:
+        pass
+    
+    # Check curl-cffi
+    try:
+        import curl_cffi
+        result["curl_cffi_installed"] = True
+        result["curl_cffi_version"] = getattr(curl_cffi, '__version__', 'unknown')
+    except ImportError as e:
+        result["curl_cffi_import_error"] = str(e)
+    
+    # Check impersonation
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        result["impersonate_available"] = True
+        
+        # Try to list targets
+        try:
+            test_opts = {'skip_download': True}
+            with yt_dlp.YoutubeDL(test_opts) as ydl:
+                targets = []
+                for handler in ydl._request_director.handlers.values():
+                    from yt_dlp.networking.impersonate import ImpersonateRequestHandler
+                    if isinstance(handler, ImpersonateRequestHandler):
+                        for t in handler.supported_targets:
+                            targets.append(str(t))
+                result["impersonate_targets"] = targets[:10]  # Cap at 10
+        except Exception as e:
+            result["impersonate_targets"] = [f"Error listing: {e}"]
+    except ImportError as e:
+        result["impersonate_import_error"] = str(e)
+    
+    # Check if curl-cffi handler loaded in yt-dlp
+    try:
+        from yt_dlp.networking._curlcffi import CurlCFFIRH
+        result["curlcffi_handler_loaded"] = True
+    except ImportError as e:
+        result["curlcffi_handler_loaded"] = False
+        result["curlcffi_handler_error"] = str(e)
+    
+    # Test get_ydl_opts to see what impersonate value is set
+    try:
+        test = get_ydl_opts({})
+        imp = test.get('impersonate')
+        result["ydl_opts_test"] = {
+            "impersonate": str(imp) if imp else None,
+            "force_ipv4": test.get('force_ipv4'),
+            "cookiefile": test.get('cookiefile'),
+        }
+    except Exception as e:
+        result["ydl_opts_test"] = {"error": str(e)}
+    
+    return result
 
 @app.post("/api/abort/{task_id}")
 async def abort_download(task_id: str, payload: AbortRequest):

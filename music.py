@@ -891,3 +891,11 @@ async def get_index():
     with open(templates_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     return html_content
+
+@app.get("/media.png")
+async def get_media_png():
+    media_path = os.path.join(os.path.dirname(__file__), "media.png")
+    if os.path.exists(media_path):
+        return FileResponse(media_path, media_type="image/png")
+    raise HTTPException(status_code=404, detail="Not found")
+

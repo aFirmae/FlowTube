@@ -332,9 +332,11 @@
     <main class="flex-grow max-w-5xl w-full mx-auto px-4 py-12 md:py-16 relative z-10">
         
         <!-- Welcome Hero -->
-        <div class="text-center max-w-2xl mx-auto mb-12">
-            <h2 class="text-3xl md:text-5xl font-outfit font-extrabold tracking-tight mb-4 text-slate-900">
-                YouTube <span class="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Downloader</span>
+        <div class="text-center w-full mx-auto mb-12">
+            <h2 class="text-4xl md:text-6xl font-outfit font-extrabold tracking-tight mb-4 text-slate-900 flex items-center justify-center gap-3 md:gap-5 whitespace-nowrap">
+                <span>YouTube</span>
+                <img src="/media.png" alt="Media" class="hidden md:inline-block h-16 md:h-28 lg:h-32 w-auto object-contain align-middle drop-shadow-md transform -rotate-3 hover:scale-105 transition-transform duration-300">
+                <span class="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">Downloader</span>
             </h2>
             <p class="text-slate-500 text-sm md:text-base leading-relaxed font-medium">
                 Paste a YouTube link, pick your tracks, and download as MP3 or MP4.
@@ -355,7 +357,7 @@
                             id="url-input" 
                             required
                             placeholder="Paste a YouTube link here…" 
-                            class="block w-full pl-11 pr-12 py-4 rounded-xl bg-slate-50/50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all text-sm md:text-base font-medium shadow-inner"
+                            class="block w-full pl-11 pr-24 py-4 rounded-xl bg-slate-50/50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white transition-all text-sm md:text-base font-medium shadow-inner"
                         >
                         <!-- Paste button -->
                         <button 

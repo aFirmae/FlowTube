@@ -798,17 +798,51 @@ async def get_progress_sse_endpoint(task_id: str):
         queue = tasks[task_id]["queue"]
         while True:
             try:
-                msg = await queue.get()
+                # Use a timeout so we can send keepalive pings.
+                # When the browser is backgrounded, it throttles timers and may
+                # close idle SSE connections. Periodic pings keep the TCP stream
+                # alive and prevent Railway/reverse-proxy read timeouts.
+                msg = await asyncio.wait_for(queue.get(), timeout=15)
                 yield f"data: {json.dumps(msg)}\n\n"
                 
                 # Exit the stream once the task terminates
-                if msg.get("status") in ["completed", "failed"]:
+                if msg.get("status") in ["completed", "failed", "aborted"]:
                     break
+            except asyncio.TimeoutError:
+                # No real data within 15 s – send an SSE comment as a keepalive
+                yield ": keepalive\n\n"
             except asyncio.CancelledError:
                 # Occurs if client closes the tab or terminates SSE connection
                 break
                 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx/Railway proxy buffering
+        },
+    )
+
+@app.get("/api/download/status/{task_id}")
+async def get_task_status(task_id: str):
+    """Polling fallback endpoint. If the SSE stream drops (browser backgrounded,
+    network hiccup), the client can poll this to discover the task's current state
+    and recover without losing the download."""
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = tasks[task_id]
+    result = {
+        "task_id": task_id,
+        "status": task.get("status", "pending"),
+        "error": task.get("error"),
+    }
+    
+    if task.get("status") == "completed" and task.get("final_file_path"):
+        result["download_url"] = f"/api/download/file/{task_id}"
+    
+    return result
 
 def remove_file(path: str):
     """Helper to remove file from disk after it has been sent to client."""

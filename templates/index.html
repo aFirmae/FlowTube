@@ -1800,26 +1800,109 @@
                 const { task_id } = await response.json();
                 activeTaskId = task_id;
                 
-                // Establish Server-Sent Events stream
-                activeEventSource = new EventSource(`/api/download/progress/${task_id}`);
-                
-                activeEventSource.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    
-                    if (isPlaylistDownload) {
-                        handlePlaylistSSE(data, format);
-                    } else {
-                        handleSingleSSE(data, format);
-                    }
-                };
-                
-                activeEventSource.onerror = () => {
-                    if (activeEventSource) {
-                        activeEventSource.close();
+                // ── Resilient SSE with auto-reconnect & polling fallback ──
+                // When the browser tab is backgrounded (or minimised), browsers
+                // throttle timers and may silently close idle connections.  The
+                // server now sends keepalive pings every 15 s, but if the
+                // connection still drops we:
+                //   1. Try to re-open the EventSource (up to 5 attempts).
+                //   2. Between each attempt, poll /api/download/status/{task_id}
+                //      so that if the download finished while we were away we
+                //      can still show the completed UI.
+                let sseReconnectAttempts = 0;
+                const SSE_MAX_RECONNECT = 5;
+                let sseDownloadFinished = false;
+
+                function connectSSE() {
+                    if (sseDownloadFinished) return;
+
+                    const es = new EventSource(`/api/download/progress/${task_id}`);
+                    activeEventSource = es;
+
+                    es.onopen = () => {
+                        // Reset backoff counter on successful connection
+                        sseReconnectAttempts = 0;
+                    };
+
+                    es.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+
+                        if (isPlaylistDownload) {
+                            handlePlaylistSSE(data, format);
+                        } else {
+                            handleSingleSSE(data, format);
+                        }
+
+                        // If the server sent a terminal status, mark finished so
+                        // we don't try to reconnect afterwards.
+                        if (['completed', 'failed', 'aborted'].includes(data.status)) {
+                            sseDownloadFinished = true;
+                        }
+                    };
+
+                    es.onerror = () => {
+                        // Don't do anything if we already received a terminal event
+                        if (sseDownloadFinished) {
+                            es.close();
+                            activeEventSource = null;
+                            return;
+                        }
+
+                        es.close();
                         activeEventSource = null;
-                    }
-                    showDownloadFailed("Connection to the server was lost. Please try again.");
-                };
+                        sseReconnectAttempts++;
+
+                        if (sseReconnectAttempts > SSE_MAX_RECONNECT) {
+                            // Exhausted retries – show error only now
+                            showDownloadFailed(
+                                "Connection to the server was lost after multiple retries. " +
+                                "Your download may still be running on the server — please reload and try again."
+                            );
+                            return;
+                        }
+
+                        // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+                        const delay = Math.min(2000 * Math.pow(2, sseReconnectAttempts - 1), 32000);
+
+                        console.log(`[FlowTube] SSE dropped – polling status then reconnecting (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT}) in ${delay}ms…`);
+
+                        // Poll the status endpoint first – the download may have
+                        // finished while the tab was in the background.
+                        setTimeout(async () => {
+                            if (sseDownloadFinished) return;
+                            try {
+                                const statusRes = await fetch(`/api/download/status/${task_id}`);
+                                if (statusRes.ok) {
+                                    const statusData = await statusRes.json();
+                                    if (statusData.status === 'completed') {
+                                        sseDownloadFinished = true;
+                                        restoreProgressModal();
+                                        updateMinimizedProgress(100, true);
+                                        showDownloadComplete(statusData.download_url);
+                                        return;
+                                    } else if (statusData.status === 'failed') {
+                                        sseDownloadFinished = true;
+                                        restoreProgressModal();
+                                        showDownloadFailed(statusData.error || "Download failed on the server.");
+                                        return;
+                                    } else if (statusData.status === 'aborted') {
+                                        sseDownloadFinished = true;
+                                        restoreProgressModal();
+                                        showDownloadAborted(statusData.error || "Download aborted.");
+                                        return;
+                                    }
+                                    // Still running – reconnect SSE
+                                }
+                            } catch (pollErr) {
+                                console.warn('[FlowTube] Status poll failed:', pollErr);
+                            }
+                            // Reconnect SSE stream
+                            connectSSE();
+                        }, delay);
+                    };
+                }
+
+                connectSSE();
 
             } catch (err) {
                 showDownloadFailed(safeErrorString(err));
